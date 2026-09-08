@@ -41,7 +41,7 @@ def require_role(allowed_roles: set[str]):
 
 
 class EventInput(BaseModel):
-    trader_id: str = Field(min_length=1, max_length=64)
+    trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
     event_type: str
     timestamp: str | None = None
     event_id: str | None = None
@@ -149,7 +149,14 @@ async def post_event(
     event: EventInput,
     actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST"})),
 ) -> dict[str, Any]:
-    result = engine.ingest(event.model_dump(), actor=actor["actor_id"])
+    if event.trader_id not in engine.traders:
+        raise HTTPException(status_code=404, detail="Trader not found")
+    try:
+        result = engine.ingest(event.model_dump(), actor=actor["actor_id"])
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Trader not found")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Database write failed")
     await broadcast("RISK_UPDATED", result)
     await broadcast("GRAPH_UPDATED", engine.trader_graph(event.trader_id))
     return result
@@ -247,6 +254,8 @@ async def post_case(
         result = engine.create_case(case.model_dump(), actor=actor["actor_id"])
     except KeyError:
         raise HTTPException(404, "Trader not found")
+    except Exception:
+        raise HTTPException(500, "Database write failed")
     await broadcast("CASE_CREATED", result)
     return result
 
@@ -274,6 +283,8 @@ async def patch_case(
         result = engine.update_case(case_id, changes.model_dump(exclude_none=True), actor=actor["actor_id"])
     except KeyError:
         raise HTTPException(404, "Case not found")
+    except Exception:
+        raise HTTPException(500, "Database write failed")
     await broadcast("CASE_UPDATED", result)
     return result
 

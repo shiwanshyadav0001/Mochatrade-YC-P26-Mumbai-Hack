@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import json
+import logging
 import random
 import time
 from collections import Counter, defaultdict
@@ -20,6 +22,8 @@ from models import (
     PolicyModel,
     TraderModel,
 )
+
+logger = logging.getLogger(__name__)
 
 EVENT_TYPES = {
     "LOGIN", "LOGOUT", "NEW_DEVICE", "DEVICE_CHANGE", "IP_CHANGE", "GEO_CHANGE",
@@ -495,7 +499,16 @@ class NetraEngine:
 
         trader_id = str(payload["trader_id"])
         if trader_id not in self.traders:
-            self.traders[trader_id] = self._new_trader(trader_id, 85.0, 2500)
+            raise KeyError(trader_id)
+
+        snapshot = {
+            "trader": copy.deepcopy(self.traders[trader_id]),
+            "events": len(self.events),
+            "decisions": len(self.decisions),
+            "transitions": len(self.transitions[trader_id]),
+            "audit": len(self.audit),
+            "graph_links": len(self.graph_links),
+        }
 
         event = EventRecord(
             event_id=payload.get("event_id") or f"EVENT-{uuid4().hex[:8].upper()}",
@@ -608,20 +621,34 @@ class NetraEngine:
         }
         self.decisions.append(decision_record)
 
-        self._audit(
-            actor,
-            "EVENT_INGESTED",
-            trader_id,
-            explanation["summary"],
-            {
-                "event_id": event.event_id,
-                "decision_id": decision_record["decision_id"],
-                "previous_state": prior,
-                "new_state": new_trust,
-                "triggered_rules": rules,
-                "evidence": explanation["evidence"],
-            },
-        )
+        audit_details = {
+            "event_id": event.event_id,
+            "decision_id": decision_record["decision_id"],
+            "previous_state": prior,
+            "new_state": new_trust,
+            "triggered_rules": rules,
+            "evidence": explanation["evidence"],
+        }
+
+        try:
+            audit_record = self._persist_event_and_decision(
+                trader,
+                event_data,
+                decision_record,
+                actor,
+                explanation["summary"],
+                audit_details,
+            )
+        except Exception:
+            self.traders[trader_id] = snapshot["trader"]
+            del self.events[snapshot["events"]:]
+            del self.decisions[snapshot["decisions"]:]
+            del self.transitions[trader_id][snapshot["transitions"]:]
+            del self.audit[snapshot["audit"]:]
+            del self.graph_links[snapshot["graph_links"]:]
+            raise
+
+        self.audit.append(audit_record)
 
         if decision == "RESTRICT" and not any(
             case["trader_id"] == trader_id and case["status"] in {"OPEN", "INVESTIGATING", "ESCALATED"}
@@ -638,8 +665,6 @@ class NetraEngine:
                 "netra-system",
             )
 
-        self._persist_event_and_decision(trader, event_data, decision_record)
-
         return {
             "event": event_data,
             "risk": {"dimensions": trader["risk_dimensions"], "level": trader["status"]},
@@ -651,18 +676,28 @@ class NetraEngine:
             "sequence": sequence,
         }
 
-    def _persist_event_and_decision(self, trader: dict[str, Any], event_data: dict[str, Any], decision_data: dict[str, Any]):
+    def _persist_event_and_decision(
+        self,
+        trader: dict[str, Any],
+        event_data: dict[str, Any],
+        decision_data: dict[str, Any],
+        actor: str,
+        reason: str,
+        audit_details: dict[str, Any],
+    ) -> dict[str, Any]:
+        audit_record = self._new_audit_record(actor, "EVENT_INGESTED", trader["trader_id"], reason, audit_details)
         try:
             with get_db() as db:
                 t_model = db.query(TraderModel).filter(TraderModel.trader_id == trader["trader_id"]).first()
-                if t_model:
-                    t_model.trust_score = trader["trust_score"]
-                    t_model.status = trader["status"]
-                    t_model.last_decision = trader["last_decision"]
-                    t_model.last_event_at = trader["last_event_at"]
-                    t_model.event_count = trader["event_count"]
-                    t_model.risk_dimensions_json = json.dumps(trader["risk_dimensions"])
-                    t_model.baseline_json = json.dumps(trader["baseline"])
+                if not t_model:
+                    raise RuntimeError(f"Trader row not found: {trader['trader_id']}")
+                t_model.trust_score = trader["trust_score"]
+                t_model.status = trader["status"]
+                t_model.last_decision = trader["last_decision"]
+                t_model.last_event_at = trader["last_event_at"]
+                t_model.event_count = trader["event_count"]
+                t_model.risk_dimensions_json = json.dumps(trader["risk_dimensions"])
+                t_model.baseline_json = json.dumps(trader["baseline"])
 
                 e_model = EventModel(
                     event_id=event_data["event_id"],
@@ -699,8 +734,20 @@ class NetraEngine:
                     processing_latency_ms=decision_data["processing_latency_ms"],
                 )
                 db.add(d_model)
-        except Exception:
-            pass
+                self._add_audit_model(db, audit_record)
+            return audit_record
+        except Exception as exc:
+            logger.exception(
+                "Database write failed",
+                extra={
+                    "operation": "persist_event_and_decision",
+                    "trader_id": trader["trader_id"],
+                    "event_id": event_data["event_id"],
+                    "decision_id": decision_data["decision_id"],
+                    "error": str(exc),
+                },
+            )
+            raise
 
     def step_up_verify(self, trader_id: str, verification_type: str = "2FA_BIOMETRIC", actor: str = "risk-analyst") -> dict[str, Any]:
         if trader_id not in self.traders:
@@ -865,8 +912,6 @@ class NetraEngine:
             "notes": [{"timestamp": ts, "author": actor, "text": "Case initialized with evidence dossier"}],
             "resolution": None,
         }
-        self.cases[case_id] = case
-
         try:
             with get_db() as db:
                 c_model = CaseModel(
@@ -884,16 +929,30 @@ class NetraEngine:
                     notes_json=json.dumps(case["notes"]),
                 )
                 db.add(c_model)
-        except Exception:
-            pass
+                audit_record = self._new_audit_record(
+                    actor, "CASE_CREATED", trader_id, case["reason"], {"case_id": case_id}
+                )
+                self._add_audit_model(db, audit_record)
+        except Exception as exc:
+            logger.exception(
+                "Database write failed",
+                extra={
+                    "operation": "create_case",
+                    "case_id": case_id,
+                    "trader_id": trader_id,
+                    "error": str(exc),
+                },
+            )
+            raise
 
-        self._audit(actor, "CASE_CREATED", trader_id, case["reason"], {"case_id": case_id})
+        self.cases[case_id] = case
+        self.audit.append(audit_record)
         return case
 
     def update_case(self, case_id: str, changes: dict[str, Any], actor: str = "demo-analyst") -> dict[str, Any]:
         if case_id not in self.cases:
             raise KeyError(case_id)
-        case = self.cases[case_id]
+        case = copy.deepcopy(self.cases[case_id])
         allowed = {"status", "assigned_to", "resolution"}
         for key in allowed:
             if key in changes:
@@ -905,20 +964,41 @@ class NetraEngine:
         try:
             with get_db() as db:
                 c_model = db.query(CaseModel).filter(CaseModel.case_id == case_id).first()
-                if c_model:
-                    c_model.status = case["status"]
-                    c_model.assigned_to = case["assigned_to"]
-                    c_model.resolution = case.get("resolution")
-                    c_model.updated_at = case["updated_at"]
-                    c_model.notes_json = json.dumps(case["notes"])
-        except Exception:
-            pass
+                if not c_model:
+                    raise KeyError(case_id)
+                c_model.status = case["status"]
+                c_model.assigned_to = case["assigned_to"]
+                c_model.resolution = case.get("resolution")
+                c_model.updated_at = case["updated_at"]
+                c_model.notes_json = json.dumps(case["notes"])
+                audit_record = self._new_audit_record(
+                    actor,
+                    "CASE_UPDATED",
+                    case["trader_id"],
+                    f"Case {case_id} updated",
+                    {"case_id": case_id, "changes": changes},
+                )
+                self._add_audit_model(db, audit_record)
+        except Exception as exc:
+            logger.exception(
+                "Database write failed",
+                extra={
+                    "operation": "update_case",
+                    "case_id": case_id,
+                    "trader_id": case["trader_id"],
+                    "error": str(exc),
+                },
+            )
+            raise
 
-        self._audit(actor, "CASE_UPDATED", case["trader_id"], f"Case {case_id} updated", {"case_id": case_id, "changes": changes})
+        self.cases[case_id] = case
+        self.audit.append(audit_record)
         return case
 
-    def _audit(self, actor: str, event: str, subject: str, reason: str, details: dict[str, Any]) -> None:
-        rec = {
+    def _new_audit_record(
+        self, actor: str, event: str, subject: str, reason: str, details: dict[str, Any]
+    ) -> dict[str, Any]:
+        return {
             "audit_id": f"AUD-{uuid4().hex[:8].upper()}",
             "timestamp": iso_now(),
             "actor": actor,
@@ -928,22 +1008,39 @@ class NetraEngine:
             "policy_version": self.policy["version"],
             "details": details,
         }
-        self.audit.append(rec)
+
+    @staticmethod
+    def _add_audit_model(db: Any, record: dict[str, Any]) -> None:
+        db.add(
+            AuditModel(
+                audit_id=record["audit_id"],
+                timestamp=record["timestamp"],
+                actor=record["actor"],
+                event=record["event"],
+                subject=record["subject"],
+                reason=record["reason"],
+                policy_version=record["policy_version"],
+                details_json=json.dumps(record["details"]),
+            )
+        )
+
+    def _audit(self, actor: str, event: str, subject: str, reason: str, details: dict[str, Any]) -> None:
+        rec = self._new_audit_record(actor, event, subject, reason, details)
         try:
             with get_db() as db:
-                a_model = AuditModel(
-                    audit_id=rec["audit_id"],
-                    timestamp=rec["timestamp"],
-                    actor=actor,
-                    event=event,
-                    subject=subject,
-                    reason=reason,
-                    policy_version=rec["policy_version"],
-                    details_json=json.dumps(details),
-                )
-                db.add(a_model)
-        except Exception:
-            pass
+                self._add_audit_model(db, rec)
+        except Exception as exc:
+            logger.exception(
+                "Database write failed",
+                extra={
+                    "operation": "audit",
+                    "subject": subject,
+                    "event": event,
+                    "error": str(exc),
+                },
+            )
+            raise
+        self.audit.append(rec)
 
     def prepare_scenario(self, scenario: str) -> tuple[str, list[dict[str, Any]]]:
         scenario = scenario.upper()
