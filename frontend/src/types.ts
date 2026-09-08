@@ -1,0 +1,182 @@
+export type UserRole = 'ADMIN' | 'RISK_ANALYST' | 'INVESTIGATOR' | 'VIEWER'
+
+export type Evidence = {
+  id: string
+  type: string
+  label: string
+}
+
+export type Decision = {
+  decision_id: string
+  timestamp: string
+  trader_id: string
+  action: string
+  decision: string
+  trust_score: number
+  risk_level: string
+  confidence: string
+  triggered_rules: string[]
+  processing_latency_ms: number
+  policy_version: string
+  explanation: {
+    summary: string
+    top_factors: string[]
+    recommendation: string
+    evidence: Evidence[]
+  }
+}
+
+export type Transition = {
+  transition_id: string
+  timestamp: string
+  event_id: string
+  event_type: string
+  previous_score: number
+  new_score: number
+  delta: number
+  reason: string
+  evidence: Evidence[]
+}
+
+export type Event = {
+  event_id: string
+  timestamp: string
+  trader_id: string
+  event_type: string
+  amount?: number
+  currency?: string
+  asset?: string
+  leverage?: number
+  device_id?: string
+  ip_address?: string
+  country?: string
+  city?: string
+  asn?: string
+  network_type?: string
+  wallet_address?: string
+  source: string
+  risk_relevance: string
+  metadata?: Record<string, any>
+}
+
+export type Trader = {
+  trader_id: string
+  name: string
+  segment: string
+  trust_score: number
+  initial_trust?: number
+  status: string
+  last_decision: string
+  event_count: number
+  relationship_summary: string
+  baseline?: {
+    deposit_amount?: number
+    leverage?: number
+    countries?: string[]
+    cities?: string[]
+    known_devices?: string[]
+    normal_login_hours?: number[]
+    known_wallets?: string[]
+    transaction_velocity_per_hour?: number
+  }
+  risk_dimensions?: Record<string, number>
+  timeline?: Transition[]
+  recent_events?: Event[]
+}
+
+export type Case = {
+  case_id: string
+  trader_id: string
+  severity: string
+  trust_score: number
+  status: 'OPEN' | 'INVESTIGATING' | 'ESCALATED' | 'RESOLVED' | 'FALSE_POSITIVE'
+  created_at: string
+  updated_at: string
+  assigned_to: string
+  reason: string
+  decision: string
+  evidence: Evidence[]
+  notes: { timestamp: string; author: string; text: string }[]
+  resolution?: string
+}
+
+export type GraphNode = {
+  id: string
+  label: string
+  type: string
+  risk: number
+  is_cluster?: boolean
+}
+
+export type GraphEdge = {
+  source: string
+  target: string
+  type: string
+  evidence: string[]
+}
+
+export type Graph = {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  summary: string
+  has_cluster?: boolean
+}
+
+export type Analytics = {
+  summary: {
+    active_high_risk: number
+    average_trust: number
+    critical_events: number
+    high_risk_withdrawals: number
+    open_cases: number
+    suspicious_clusters: number
+  }
+  trust_distribution: { band: string; count: number }[]
+  decision_distribution: { decision: string; count: number }[]
+  latency_metrics?: {
+    p50_ms: number
+    p95_ms: number
+    average_ms: number
+    hardware_profile: string
+  }
+  demo_metrics: {
+    precision: number
+    recall: number
+    false_positive_rate: number
+    detection_rate: number
+    average_decision_latency_ms: number
+    label: string
+  }
+  recent_decisions: Decision[]
+  top_rules: [string, number][]
+}
+
+export type Policy = {
+  version: string
+  weights: Record<string, number>
+  action_sensitivity: Record<string, number>
+  velocity_thresholds: Record<string, number>
+  trust_bands: Record<string, number>
+}
+
+export type PolicySimulationResult = {
+  evaluated_events: number
+  current_distribution: Record<string, number>
+  simulated_distribution: Record<string, number>
+  total_divergences: number
+  divergences: {
+    decision_id: string
+    trader_id: string
+    action: string
+    trust_score: number
+    current: string
+    simulated: string
+  }[]
+  estimated_latency_delta_ms: number
+}
+
+export type SearchResult = {
+  traders: { trader_id: string; name: string; trust_score: number; status: string }[]
+  events: { event_id: string; trader_id: string; event_type: string; timestamp: string }[]
+  cases: { case_id: string; trader_id: string; status: string; reason: string }[]
+}
