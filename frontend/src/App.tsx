@@ -5,7 +5,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
 import { InteractiveGraph } from './components/InteractiveGraph'
 import { PolicySandbox } from './components/PolicySandbox'
-import type { Analytics, Case, Decision, Event, Graph, Policy, Trader, UserRole } from './types'
+import type { Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, Policy, Trader, UserRole } from './types'
 
 type View =
   | 'OVERVIEW'
@@ -68,7 +68,9 @@ export default function App() {
   const [selected, setSelected] = useState<Trader | undefined>()
   const [analytics, setAnalytics] = useState<Analytics | undefined>()
   const [cases, setCases] = useState<Case[]>([])
-  const [audit, setAudit] = useState<any[]>([])
+  const [audit, setAudit] = useState<AuditRecord[]>([])
+  const [auditVerification, setAuditVerification] = useState<AuditVerifyResult | null>(null)
+  const [verifyingAudit, setVerifyingAudit] = useState(false)
   const [policy, setPolicy] = useState<Policy | undefined>()
   const [graph, setGraph] = useState<Graph | undefined>()
   const [events, setEvents] = useState<Event[]>([])
@@ -128,6 +130,25 @@ export default function App() {
       console.error(error)
     }
   }, [refreshSelected, selectedId])
+
+  const verifyAuditChain = useCallback(async () => {
+    setVerifyingAudit(true)
+    try {
+      const res = await api.get<AuditVerifyResult>('/audit/verify')
+      setAuditVerification(res)
+      if (res.valid) {
+        soundManager.playSuccess()
+        setNotice(`AUDIT CHAIN CRYPTOGRAPHICALLY VALID: ${res.checked_records} records verified via SHA-256 hash chaining.`)
+      } else {
+        soundManager.playThreatAlert()
+        setNotice(`AUDIT TAMPERING DETECTED: ${res.reason || 'Hash mismatch'}`)
+      }
+    } catch (err: any) {
+      setNotice(`Audit verification failed: ${err.message}`)
+    } finally {
+      setVerifyingAudit(false)
+    }
+  }, [])
 
   useEffect(() => {
     refreshAll()
@@ -1399,12 +1420,29 @@ export default function App() {
               <div className="col-12">
                 <div className="panel">
                   <div className="panel-header">
-                    <h3>Tamper-Evident Immutable Audit Vault</h3>
+                    <h3>Tamper-Evident SHA-256 Audit Vault</h3>
                     <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        className={`btn ${auditVerification?.valid ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ fontSize: 9 }}
+                        onClick={verifyAuditChain}
+                        disabled={verifyingAudit}
+                      >
+                        {verifyingAudit ? 'VERIFYING...' : 'VERIFY SHA-256 CHAIN'}
+                      </button>
                       <button className="btn btn-secondary" style={{ fontSize: 9 }} onClick={() => {
                         const rows = [
-                          ['Timestamp', 'Actor', 'Event', 'Subject', 'Reason', 'Policy Version'],
-                          ...audit.map(a => [a.timestamp, a.actor, a.event, a.subject, `"${a.reason}"`, a.policy_version]),
+                          ['Timestamp', 'Actor', 'Event', 'Subject', 'Current Hash', 'Previous Hash', 'Reason', 'Policy Version'],
+                          ...audit.map(a => [
+                            a.timestamp,
+                            a.actor,
+                            a.event,
+                            a.subject,
+                            a.current_hash || 'GENESIS',
+                            a.previous_hash || 'N/A',
+                            `"${a.reason}"`,
+                            a.policy_version,
+                          ]),
                         ]
                         const csvContent = 'data:text/csv;charset=utf-8,' + rows.map(r => r.join(',')).join('\n')
                         const encodedUri = encodeURI(csvContent)
@@ -1415,12 +1453,38 @@ export default function App() {
                         link.click()
                         document.body.removeChild(link)
                         soundManager.playSuccess()
-                        setNotice('AUDIT VAULT EXPORTED AS CSV.')
+                        setNotice('AUDIT VAULT EXPORTED AS CSV WITH HASH CHAIN.')
                       }}>
                         EXPORT AUDIT CSV
                       </button>
                     </div>
                   </div>
+
+                  {auditVerification && (
+                    <div style={{
+                      padding: '8px 14px',
+                      margin: '10px 14px',
+                      borderRadius: 3,
+                      background: auditVerification.valid ? 'rgba(46, 213, 115, 0.08)' : 'rgba(255, 71, 87, 0.1)',
+                      borderLeft: `3px solid ${auditVerification.valid ? 'var(--accent-emerald, #2ed573)' : 'var(--accent-crimson, #ff4757)'}`,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: 11,
+                    }}>
+                      <div>
+                        <b>{auditVerification.valid ? 'CRYPTOGRAPHIC INTEGRITY VERIFIED' : 'CHAIN TAMPERING DETECTED'}</b>
+                        <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
+                          {auditVerification.valid
+                            ? `${auditVerification.checked_records} records verified via SHA-256. Genesis: ${auditVerification.genesis_hash.slice(0, 8)}... | Head: ${auditVerification.latest_hash.slice(0, 8)}...`
+                            : `Violation: ${auditVerification.reason}`}
+                        </span>
+                      </div>
+                      <span className={`status-pill ${auditVerification.valid ? 'normal' : 'critical'}`}>
+                        {auditVerification.valid ? 'CHAIN VALID' : 'TAMPERED'}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="table-container">
                     <table className="data-table">
@@ -1430,6 +1494,7 @@ export default function App() {
                           <th>ACTOR</th>
                           <th>EVENT TYPE</th>
                           <th>SUBJECT</th>
+                          <th>SHA-256 HASH LINK</th>
                           <th>REASON & REPRODUCIBILITY SUMMARY</th>
                           <th>POLICY VER</th>
                         </tr>
@@ -1441,6 +1506,9 @@ export default function App() {
                             <td className="mono"><b>{item.actor}</b></td>
                             <td><StatusBadge value={item.event} /></td>
                             <td className="mono">{item.subject}</td>
+                            <td className="mono" style={{ fontSize: 9, color: 'var(--accent-cyan)' }} title={`Current: ${item.current_hash || 'N/A'}\nPrevious: ${item.previous_hash || 'N/A'}`}>
+                              {item.current_hash ? `${item.current_hash.slice(0, 8)}...${item.current_hash.slice(-6)}` : 'GENESIS'}
+                            </td>
                             <td>{item.reason}</td>
                             <td className="mono">{item.policy_version}</td>
                           </tr>
@@ -1494,8 +1562,8 @@ export default function App() {
               <div className="col-4">
                 <div className="panel">
                   <div className="panel-header">
-                    <h3>Hardware Telemetry Latency</h3>
-                    <span className="panel-meta">TIME.PERF_COUNTER() PROFILING</span>
+                    <h3>Engine Execution Profiling</h3>
+                    <span className="panel-meta">PERF_COUNTER() PIPELINE TIMING</span>
                   </div>
                   <table className="data-table" style={{ fontSize: 11 }}>
                     <tbody>
@@ -1513,14 +1581,39 @@ export default function App() {
                       </tr>
                       <tr>
                         <td style={{ color: 'var(--text-muted)' }}>DETECTION PRECISION</td>
-                        <td className="mono"><b>94.2%</b></td>
+                        <td className="mono">
+                          <b>
+                            {analytics?.demo_metrics?.precision !== undefined
+                              ? `${(analytics.demo_metrics.precision * 100).toFixed(1)}%`
+                              : 'N/A (Requires Labeled Controls)'}
+                          </b>
+                        </td>
                       </tr>
                       <tr>
-                        <td style={{ color: 'var(--text-muted)' }}>RECALL RATE</td>
-                        <td className="mono"><b>91.5%</b></td>
+                        <td style={{ color: 'var(--text-muted)' }}>RECALL (THREAT DETECTION)</td>
+                        <td className="mono">
+                          <b>
+                            {analytics?.demo_metrics?.recall !== undefined
+                              ? `${(analytics.demo_metrics.recall * 100).toFixed(1)}%`
+                              : 'N/A (Requires Labeled Controls)'}
+                          </b>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'var(--text-muted)' }}>FALSE POSITIVE RATE</td>
+                        <td className="mono">
+                          <b>
+                            {analytics?.demo_metrics?.false_positive_rate !== undefined
+                              ? `${(analytics.demo_metrics.false_positive_rate * 100).toFixed(1)}%`
+                              : 'N/A'}
+                          </b>
+                        </td>
                       </tr>
                     </tbody>
                   </table>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)', padding: '8px 12px', borderTop: '1px solid var(--border-color)' }}>
+                    {analytics?.demo_metrics?.label || 'Live Engine Decisions vs Known Threat Controls'}
+                  </div>
                 </div>
               </div>
 
