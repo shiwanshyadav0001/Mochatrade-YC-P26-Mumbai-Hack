@@ -6,6 +6,7 @@ import { CryptographicAuditVault } from './components/CryptographicAuditVault'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
 import { ForensicCaseWorkbench } from './components/ForensicCaseWorkbench'
 import { InteractiveGraph } from './components/InteractiveGraph'
+import { LiveTelemetryMonitor } from './components/LiveTelemetryMonitor'
 import { PolicyMatrixSimulator } from './components/PolicyMatrixSimulator'
 import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
 import { ScenarioAttackReplay } from './components/ScenarioAttackReplay'
@@ -211,9 +212,20 @@ export default function App() {
     refreshSelected(selectedId)
   }, [selectedId, refreshSelected])
 
-  useEffect(() => {
+  const streamRef = useRef<EventSource | null>(null)
+
+  const connectStream = useCallback(() => {
+    if (streamRef.current) {
+      try {
+        streamRef.current.close()
+      } catch {}
+    }
     const stream = new EventSource('/api/stream')
-    stream.onopen = () => setConnected(true)
+    streamRef.current = stream
+    stream.onopen = () => {
+      setConnected(true)
+      setNotice('REAL-TIME SSE TELEMETRY STREAM ESTABLISHED.')
+    }
     stream.onerror = () => setConnected(false)
     stream.onmessage = message => {
       try {
@@ -263,8 +275,18 @@ export default function App() {
         console.error('SSE parse error:', err)
       }
     }
-    return () => stream.close()
   }, [refreshAll, refreshSelected])
+
+  useEffect(() => {
+    connectStream()
+    return () => {
+      if (streamRef.current) {
+        try {
+          streamRef.current.close()
+        } catch {}
+      }
+    }
+  }, [connectStream])
 
   const handleRoleChange = async (newRole: UserRole) => {
     try {
@@ -1070,339 +1092,36 @@ export default function App() {
 
           {/* VIEW: LIVE MONITOR */}
           {view === 'LIVE MONITOR' && (
-            <div className="grid-12">
-              {/* TOP: Real-Time Telemetry & Stream Health Ribbon */}
-              <div className="col-12">
-                <div className="live-telemetry-ribbon">
-                  <div className="telemetry-metric-group">
-                    <div className="telemetry-metric-item">
-                      <span className="telemetry-metric-label">STREAM STATUS</span>
-                      <div className="telemetry-metric-value">
-                        <span className={`stream-status-dot ${connected ? 'dot-live' : 'dot-offline'}`} />
-                        <span style={{ color: connected ? 'var(--state-normal)' : 'var(--state-critical)' }}>
-                          {connected ? 'LIVE // SSE STREAM ACTIVE' : 'STANDBY // RECONNECTING'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="telemetry-metric-item">
-                      <span className="telemetry-metric-label">INGESTED TELEMETRY</span>
-                      <div className="telemetry-metric-value mono">
-                        {events.length} EVENTS
-                      </div>
-                    </div>
-
-                    <div className="telemetry-metric-item">
-                      <span className="telemetry-metric-label">EVALUATION LATENCY</span>
-                      <div className="telemetry-metric-value mono" style={{ color: '#38bdf8' }}>
-                        {analytics?.latency_metrics?.average_ms != null ? analytics.latency_metrics.average_ms.toFixed(2) : '0.42'} ms
-                      </div>
-                    </div>
-
-                    <div className="telemetry-metric-item">
-                      <span className="telemetry-metric-label">ACTIVE POPULATION</span>
-                      <div className="telemetry-metric-value mono">
-                        {traders.length} MANAGED ({populationStats.critical} CRIT / {populationStats.monitored} ELEV)
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div className="telemetry-metric-item" style={{ alignItems: 'flex-end' }}>
-                      <span className="telemetry-metric-label">FOCUS MODE</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {autoFocus ? (
-                          <>
-                            <span className="focus-mode-badge badge-auto">
-                              ● AUTO-TRACKING INGESTION // #{selectedId}
-                            </span>
-                            <button
-                              className="focus-mode-toggle-btn"
-                              title="Lock current trader focus to prevent auto-switching on new events"
-                              onClick={() => setAutoFocus(false)}
-                            >
-                              LOCK FOCUS
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <span className="focus-mode-badge badge-locked">
-                              ○ OPERATOR LOCKED // #{selectedId}
-                            </span>
-                            <button
-                              className="focus-mode-toggle-btn"
-                              style={{ borderColor: 'var(--accent-cobalt)', color: '#60a5fa' }}
-                              title="Resume automatic tracking of incoming telemetry stream"
-                              onClick={() => setAutoFocus(true)}
-                            >
-                              RESUME AUTO-FOLLOW
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="telemetry-metric-item" style={{ alignItems: 'flex-end', borderLeft: '1px solid var(--border-subtle)', paddingLeft: 10 }}>
-                      <span className="telemetry-metric-label">LAST INGESTION</span>
-                      <div className="telemetry-metric-value mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                        {formatTime(lastEventTime || events[0]?.timestamp)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Dynamic Trader Focus Selector */}
-                <div className="dynamic-focus-bar">
-                  <div className="live-trader-chips">
-                    <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginRight: 4 }}>
-                      DYNAMIC FOCUS:
-                    </span>
-                    {dynamicFocusTraders.map(t => {
-                      const isCrit = t.trust_score < 45
-                      const isMon = t.trust_score < 70
-                      const scoreColor = t.trust_score >= 80 ? 'var(--state-normal)' : isCrit ? 'var(--state-critical)' : isMon ? 'var(--state-elevated)' : '#38bdf8'
-                      return (
-                        <button
-                          key={t.trader_id}
-                          className={`live-trader-chip ${selectedId === t.trader_id ? 'active' : ''} ${isCrit ? 'chip-critical' : ''}`}
-                          onClick={() => {
-                            setSelectedId(t.trader_id)
-                            setAutoFocus(false)
-                          }}
-                        >
-                          <span>#{t.trader_id} {t.name.split(' ')[0]}</span>
-                          <span style={{ color: scoreColor, fontWeight: 700 }}>
-                            {Math.round(t.trust_score)}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>ALL ({traders.length}):</span>
-                    <select
-                      value={selectedId}
-                      onChange={e => {
-                        setSelectedId(e.target.value)
-                        setAutoFocus(false)
-                      }}
-                      style={{
-                        background: 'var(--bg-surface-2)',
-                        border: '1px solid var(--border-subtle)',
-                        borderRadius: 3,
-                        padding: '3px 8px',
-                        color: '#fff',
-                        fontSize: 10,
-                        fontFamily: 'var(--font-mono)',
-                      }}
-                    >
-                      {traders.map(t => (
-                        <option key={t.trader_id} value={t.trader_id}>
-                          #{t.trader_id} - {t.name} ({Math.round(t.trust_score)}/100, {t.status})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* LEFT COLUMN: Streaming Ingestion Feed & Dimensional Matrix */}
-              <div className="col-8">
-                <div className="panel">
-                  <div className="panel-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <h3>Streaming Event Ingestion Feed</h3>
-                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
-                        ({filteredEvents.length} OF {events.length})
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input
-                        type="text"
-                        placeholder="Filter IP/Device/ID..."
-                        value={eventSearch}
-                        onChange={e => setEventSearch(e.target.value)}
-                        style={{
-                          background: 'var(--bg-surface-2)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 3,
-                          padding: '2px 8px',
-                          color: '#fff',
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 10,
-                          width: 140,
-                        }}
-                      />
-                      <select
-                        value={eventTypeFilter}
-                        onChange={e => setEventTypeFilter(e.target.value)}
-                        style={{
-                          background: 'var(--bg-surface-2)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 3,
-                          padding: '2px 6px',
-                          color: '#fff',
-                          fontSize: 10,
-                          fontFamily: 'var(--font-mono)',
-                        }}
-                      >
-                        <option value="ALL">ALL TYPES</option>
-                        <option value="LOGIN">LOGIN</option>
-                        <option value="NEW_DEVICE">NEW_DEVICE</option>
-                        <option value="IP_CHANGE">IP_CHANGE</option>
-                        <option value="DEPOSIT">DEPOSIT</option>
-                        <option value="LEVERAGE_CHANGE">LEVERAGE_CHANGE</option>
-                        <option value="WITHDRAWAL">WITHDRAWAL</option>
-                      </select>
-                      <button className="btn btn-secondary" style={{ fontSize: 9 }} onClick={exportEventsCSV}>
-                        CSV
-                      </button>
-                    </div>
-                  </div>
-                  <div className="table-container" style={{ maxHeight: 520 }}>
-                    <EventTable
-                      events={filteredEvents}
-                      recentEventIds={recentEventIds}
-                      showPriority={true}
-                      onSelectTrader={id => {
-                        setSelectedId(id)
-                        setAutoFocus(false)
-                      }}
-                      onInspectEvent={inspectEvent}
-                    />
-                  </div>
-                </div>
-
-                <div className="panel" style={{ marginTop: 12 }}>
-                  <div className="panel-header">
-                    <h3>Dimensional Exposure Breakdown // Trader #{selectedId}</h3>
-                    <span className="panel-meta">LIVE SCORES</span>
-                  </div>
-                  <DimensionMatrix dimensions={selected?.risk_dimensions} />
-                </div>
-              </div>
-
-              {/* RIGHT COLUMN: Continuous Trust Intelligence & Decision Enforcement */}
-              <div className="col-4">
-                {/* Active Focus Dossier Card */}
-                {selected && (
-                  <div className="live-focus-card">
-                    <div className="live-focus-header">
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
-                            #{selected.trader_id} {selected.name}
-                          </span>
-                          <StatusBadge value={selected.status} />
-                        </div>
-                        <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 2 }}>
-                          {selected.segment || 'PRO TRADER'} // BASELINE TRUST: {selected.initial_trust ?? 94}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: selected.trust_score >= 80 ? 'var(--state-normal)' : selected.trust_score < 45 ? 'var(--state-critical)' : 'var(--state-elevated)' }}>
-                          {Math.round(selected.trust_score)}
-                          <span style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 400 }}>/100</span>
-                        </div>
-                        <span className="mono" style={{ fontSize: 8, color: 'var(--text-dim)' }}>TRUST SCORE</span>
-                      </div>
-                    </div>
-                    <div className="live-focus-body">
-                      <div className="live-focus-row">
-                        <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>KNOWN DEVICES:</span>
-                        <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
-                          {selected.baseline?.known_devices?.length ?? 1} REGISTERED
-                        </span>
-                      </div>
-                      <div className="live-focus-row">
-                        <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>LOGIN HOURS:</span>
-                        <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
-                          {selected.baseline?.normal_login_hours?.length ? `${selected.baseline.normal_login_hours.join(', ')} UTC` : '09-17 UTC'}
-                        </span>
-                      </div>
-                      <div className="live-focus-row">
-                        <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>GEOGRAPHY:</span>
-                        <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
-                          {selected.baseline?.countries?.join(', ') || 'US, UK'}
-                        </span>
-                      </div>
-                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
-                          {selected.event_count} EVENTS OBSERVED
-                        </span>
-                        <button
-                          className="btn btn-secondary"
-                          style={{ padding: '2px 8px', fontSize: 9 }}
-                          onClick={() => inspectTrader(selected)}
-                        >
-                          FULL DOSSIER →
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Persistent Decision Panel with Quick Action Sensitivity */}
-                <PersistentDecisionPanel
-                  decision={latestDecision}
-                  onInspect={() => latestDecision && inspectDecision(latestDecision)}
-                  onCreateCase={createCase}
-                  onStepUp={() => selected && stepUpVerify(selected.trader_id)}
-                />
-
-                {/* Causal Reasoning Chain */}
-                <div style={{ marginTop: 12 }}>
-                  <ReasoningEvidenceChain
-                    trader={selected}
-                    decision={latestDecision}
-                    latestEvent={events.find(e => e.trader_id === selectedId) || selected?.recent_events?.[0]}
-                    graph={graph}
-                    onInspectEvidence={() => latestDecision && inspectDecision(latestDecision)}
-                    onOpenTopology={() => setView('RELATIONSHIP GRAPH')}
-                  />
-                </div>
-
-                {/* Live Topology Linkage Preview */}
-                <div className="panel" style={{ marginTop: 12 }}>
-                  <div className="panel-header">
-                    <h3>Live Topology Linkage Preview</h3>
-                    <span className="panel-meta">{graph?.nodes.length ?? 0} NODES</span>
-                  </div>
-                  <div style={{ height: 240 }}>
-                    <InteractiveGraph
-                      graph={graph}
-                      selectedNodeId={nodeInfo}
-                      onSelectNode={id => {
-                        setNodeInfo(id)
-                        if (id.startsWith('TRADER-')) {
-                          const tid = id.replace('TRADER-', '')
-                          const t = traders.find(item => item.trader_id === tid)
-                          const d = decisions.find(item => item.trader_id === tid)
-                          if (t) {
-                            setDrawerData({ trader: t, decision: d })
-                            setDrawerOpen(true)
-                          }
-                        } else {
-                          const node = graph?.nodes.find(n => n.id === id)
-                          const connectedEdges = graph?.edges.filter(e => e.source === id || e.target === id) || []
-                          setDrawerData({
-                            entity: {
-                              id,
-                              type: node?.type || 'INFRASTRUCTURE',
-                              risk: node?.risk,
-                              is_cluster: node?.is_cluster,
-                              edges: connectedEdges,
-                            },
-                          })
-                          setDrawerOpen(true)
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <LiveTelemetryMonitor
+              events={events}
+              decisions={decisions}
+              traders={traders}
+              selectedId={selectedId}
+              selected={selected}
+              latestDecision={latestDecision}
+              connected={connected}
+              analytics={analytics}
+              autoFocus={autoFocus}
+              recentEventIds={recentEventIds}
+              lastEventTime={lastEventTime}
+              graph={graph}
+              onSelectTrader={id => {
+                setSelectedId(id)
+                setAutoFocus(false)
+              }}
+              onToggleAutoFocus={setAutoFocus}
+              onInspectEvent={inspectEvent}
+              onInspectDecision={inspectDecision}
+              onInspectTrader={inspectTrader}
+              onCreateCase={createCase}
+              onStepUp={stepUpVerify}
+              onNavigateView={setView}
+              onReconnectStream={connectStream}
+              onExportCSV={exportEventsCSV}
+              onEvaluateAction={evaluateAction}
+              evaluatingAction={evaluatingAction}
+              actionEvalResult={actionEvalResult}
+            />
           )}
 
           {/* VIEW: TRADERS */}

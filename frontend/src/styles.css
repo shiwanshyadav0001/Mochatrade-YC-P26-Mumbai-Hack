@@ -2042,6 +2042,19 @@ button:disabled {
   margin-bottom: 0;
 }
 
+.live-row-focused-trader {
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.live-expanded-causal-row {
+  animation: causal-card-expand 200ms ease-out forwards;
+}
+
+@keyframes causal-card-expand {
+  0% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 /* ==========================================================================
    NETRA Slice 2 — Scenario Lab / Interactive Attack Replay Stepper
    ========================================================================== */

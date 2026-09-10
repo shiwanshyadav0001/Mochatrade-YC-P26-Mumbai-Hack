@@ -9,10 +9,12 @@ export type Evidence = {
 export type Decision = {
   decision_id: string
   timestamp: string
+  event_id?: string
   trader_id: string
   action: string
   decision: string
   trust_score: number
+  previous_score?: number
   risk_level: string
   confidence: string
   triggered_rules: string[]
