@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, getActorRole, setActorRole } from './api'
+import { api, setActorRole } from './api'
 import { soundManager } from './audio'
 import { CommandPalette } from './components/CommandPalette'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
@@ -180,7 +180,12 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    refreshAll()
+    setActorRole('ADMIN')
+      .then(() => refreshAll())
+      .catch(error => {
+        setNotice('Authentication required. Configure the NETRA frontend credentials.')
+        console.error(error)
+      })
   }, [])
 
   useEffect(() => {
@@ -222,10 +227,16 @@ export default function App() {
     return () => stream.close()
   }, [refreshAll, refreshSelected, selectedId])
 
-  const handleRoleChange = (newRole: UserRole) => {
-    setUserRole(newRole)
-    setActorRole(newRole)
-    setNotice(`ACTIVE ACTOR ROLE: ${newRole}`)
+  const handleRoleChange = async (newRole: UserRole) => {
+    try {
+      await setActorRole(newRole)
+      setUserRole(newRole)
+      setNotice(`AUTHENTICATED ACTOR ROLE: ${newRole}`)
+      await refreshAll()
+    } catch (error) {
+      setNotice(`Authentication failed for ${newRole}.`)
+      console.error(error)
+    }
   }
 
   const toggleSound = () => {

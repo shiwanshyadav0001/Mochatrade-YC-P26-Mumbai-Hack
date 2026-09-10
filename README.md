@@ -67,13 +67,29 @@ Real-time SSE Stream → Institutional React/TypeScript Operations Console
 
 ### 1. Backend Service
 
+Configure authentication before starting the API. The signing key and server-side user/role store must be supplied through environment variables:
+
+```powershell
+$env:NETRA_JWT_SECRET = "replace-with-a-long-random-secret"
+$env:NETRA_AUTH_USERS_JSON = '{"admin":{"role":"ADMIN","password_hash":"<pbkdf2-hash>"}}'
+```
+
+Generate a password hash with:
+
+```powershell
+Push-Location backend
+py -3.12 -c "from auth import hash_password; print(hash_password('replace-with-password'))"
+Pop-Location
+```
+
 ```powershell
 cd backend
 python -m pip install -r requirements.txt
 python -m uvicorn main:app --reload --port 8000
 ```
+- Login: [http://localhost:8000/docs](http://localhost:8000/docs) via `POST /api/auth/login`
 - API documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Health check: [http://localhost:8000/health](http://localhost:8000/health)
+- Health check: [http://localhost:8000/api/health](http://localhost:8000/api/health)
 
 ### 2. Frontend Console
 
@@ -82,6 +98,7 @@ cd frontend
 npm install
 npm run dev
 ```
+- Set `VITE_NETRA_ADMIN_USERNAME` and `VITE_NETRA_ADMIN_PASSWORD` before `npm run dev`; add matching `VITE_NETRA_RISK_ANALYST_*`, `VITE_NETRA_INVESTIGATOR_*`, and `VITE_NETRA_VIEWER_*` values for the role selector.
 - Web console: [http://localhost:5173](http://localhost:5173)
 
 ---

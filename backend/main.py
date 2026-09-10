@@ -6,41 +6,17 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from auth import authenticate_user, create_access_token, get_current_actor, require_role
 from engine import EVENT_TYPES, NetraEngine
 from anomaly_model import BehavioralAnomalyService
 
 engine = NetraEngine()
 subscribers: set[asyncio.Queue[str]] = set()
-
-ROLES = {"ADMIN", "RISK_ANALYST", "INVESTIGATOR", "VIEWER"}
-
-
-def get_current_actor(
-    x_actor_id: str | None = Header(default="analyst-01"),
-    x_actor_role: str | None = Header(default="RISK_ANALYST"),
-) -> dict[str, str]:
-    role = (x_actor_role or "RISK_ANALYST").upper()
-    if role not in ROLES:
-        role = "RISK_ANALYST"
-    return {"actor_id": x_actor_id or "analyst-01", "role": role}
-
-
-def require_role(allowed_roles: set[str]):
-    def checker(actor: dict[str, str] = Depends(get_current_actor)):
-        if actor["role"] not in allowed_roles:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Access denied: Role '{actor['role']}' does not have permission for this action. Allowed: {sorted(allowed_roles)}",
-            )
-        return actor
-
-    return checker
-
 
 class EventInput(BaseModel):
     trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
@@ -99,6 +75,10 @@ class ScenarioRequest(BaseModel):
 class StepUpRequest(BaseModel):
     verification_type: Literal["2FA_BIOMETRIC", "HARDWARE_KEY", "VIDEO_KYC", "SMS_OTP"] = "2FA_BIOMETRIC"
 
+
+class LoginInput(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
 
 class ActionEvaluationInput(BaseModel):
     trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
@@ -160,7 +140,21 @@ def health() -> dict[str, Any]:
         "events": len(engine.events),
         "cases": len(engine.cases),
         "storage": "sqlite-wal-persistent",
+        "authentication_enabled": True,
         "rbac_enabled": True,
+    }
+
+
+@app.post("/api/auth/login")
+def login(credentials: LoginInput) -> dict[str, Any]:
+    actor = authenticate_user(credentials.username, credentials.password)
+    access_token, expires_at = create_access_token(actor)
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_at": expires_at,
+        "actor_id": actor["actor_id"],
+        "role": actor["role"],
     }
 
 
@@ -191,12 +185,12 @@ def get_events_endpoint(
 
 
 @app.get("/api/traders")
-def traders() -> list[dict[str, Any]]:
+def traders(_: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
     return engine.trader_list()
 
 
 @app.get("/api/traders/{trader_id}")
-def trader(trader_id: str) -> dict[str, Any]:
+def trader(trader_id: str, _: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     try:
         return engine.get_trader(trader_id)
     except KeyError:
@@ -204,7 +198,7 @@ def trader(trader_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/traders/{trader_id}/risk")
-def trader_risk(trader_id: str) -> dict[str, Any]:
+def trader_risk(trader_id: str, _: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     try:
         t = engine.get_trader(trader_id)
         return {"trader_id": trader_id, "trust_score": t["trust_score"], "status": t["status"], "dimensions": t["risk_dimensions"]}
@@ -213,21 +207,21 @@ def trader_risk(trader_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/traders/{trader_id}/timeline")
-def trader_timeline(trader_id: str) -> list[dict[str, Any]]:
+def trader_timeline(trader_id: str, _: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
     if trader_id not in engine.traders:
         raise HTTPException(404, "Trader not found")
     return engine.transitions[trader_id][::-1]
 
 
 @app.get("/api/traders/{trader_id}/events")
-def trader_events(trader_id: str) -> list[dict[str, Any]]:
+def trader_events(trader_id: str, _: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
     if trader_id not in engine.traders:
         raise HTTPException(404, "Trader not found")
     return engine.trader_events(trader_id)
 
 
 @app.get("/api/traders/{trader_id}/graph")
-def trader_graph(trader_id: str) -> dict[str, Any]:
+def trader_graph(trader_id: str, _: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     if trader_id not in engine.traders:
         raise HTTPException(404, "Trader not found")
     return engine.trader_graph(trader_id)
@@ -296,6 +290,7 @@ def risk_events(
     category: str | None = None,
     min_severity: float | None = None,
     limit: int = 100,
+    _: dict[str, str] = Depends(get_current_actor),
 ) -> list[dict[str, Any]]:
     return engine.get_risk_events(
         trader_id=trader_id,
@@ -306,12 +301,12 @@ def risk_events(
 
 
 @app.get("/api/decisions")
-def decisions() -> list[dict[str, Any]]:
+def decisions(_: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
     return engine.decisions[::-1]
 
 
 @app.get("/api/decisions/{decision_id}")
-def decision(decision_id: str) -> dict[str, Any]:
+def decision(decision_id: str, _: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     for row in engine.decisions:
         if row["decision_id"] == decision_id:
             return row
@@ -319,7 +314,7 @@ def decision(decision_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/cases")
-def cases() -> list[dict[str, Any]]:
+def cases(_: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
     return sorted(engine.cases.values(), key=lambda item: item["updated_at"], reverse=True)
 
 
@@ -339,7 +334,7 @@ async def post_case(
 
 
 @app.get("/api/cases/{case_id}")
-def get_case(case_id: str) -> dict[str, Any]:
+def get_case(case_id: str, _: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     if case_id not in engine.cases:
         raise HTTPException(404, "Case not found")
     case = engine.cases[case_id]
@@ -368,7 +363,7 @@ async def patch_case(
 
 
 @app.get("/api/cases/{case_id}/dossier")
-def case_dossier(case_id: str) -> dict[str, Any]:
+def case_dossier(case_id: str, _: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     if case_id not in engine.cases:
         raise HTTPException(404, "Case not found")
     case = engine.cases[case_id]
@@ -388,7 +383,7 @@ def case_dossier(case_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/audit")
-def audit() -> list[dict[str, Any]]:
+def audit(_: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
     return engine.audit[::-1]
 
 
@@ -435,7 +430,7 @@ async def reset_trader_baseline_endpoint(
 
 
 @app.get("/api/policies")
-def policy() -> dict[str, Any]:
+def policy(_: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     return engine.policy
 
 
@@ -462,12 +457,12 @@ def simulate_policy_endpoint(
 
 
 @app.get("/api/search")
-def universal_search(q: str = Query(default="", min_length=1)) -> dict[str, Any]:
+def universal_search(q: str = Query(default="", min_length=1), _: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     return engine.search(q)
 
 
 @app.get("/api/sequences")
-def sequences() -> list[dict[str, Any]]:
+def sequences(_: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
     return [
         {
             "id": "SEQ-RAPID-WITHDRAWAL",
@@ -544,7 +539,7 @@ async def simulator_reset(
 
 
 @app.get("/api/analytics")
-def analytics() -> dict[str, Any]:
+def analytics(_: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     return engine.analytics()
 
 
