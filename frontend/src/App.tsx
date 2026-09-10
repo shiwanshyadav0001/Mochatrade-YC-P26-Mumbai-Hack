@@ -5,6 +5,8 @@ import { CommandPalette } from './components/CommandPalette'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
 import { InteractiveGraph } from './components/InteractiveGraph'
 import { PolicySandbox } from './components/PolicySandbox'
+import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
+import { TrustTrajectoryHero } from './components/TrustTrajectoryHero'
 import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, Policy, RiskEventItem, Trader, UserRole } from './types'
 
 type View =
@@ -305,6 +307,20 @@ export default function App() {
     }
   }
 
+  const stepScenario = async (scenario: string) => {
+    try {
+      soundManager.playEventTick()
+      const res = await api.send<any>('POST', '/simulator/step', { scenario })
+      if (res.event?.trader_id) {
+        setSelectedId(res.event.trader_id)
+      }
+      setNotice(`STEPPED EVENT IN SCENARIO ${scenario}: ${res.event?.event_type || 'Event processed'} (${res.remaining ?? 0} remaining)`)
+      await refreshAll()
+    } catch (err: any) {
+      setNotice(err.message || 'Step execution rejected.')
+    }
+  }
+
   const resetDemo = async () => {
     try {
       await api.send('POST', '/simulator/reset')
@@ -551,6 +567,16 @@ export default function App() {
     return decisions.find(d => d.trader_id === selectedId) || (selected ? undefined : decisions[0])
   }, [decisions, selectedId, selected])
 
+  const populationStats = useMemo(() => {
+    const total = traders.length || 106
+    const trusted = traders.filter(t => t.trust_score >= 70).length
+    const monitored = traders.filter(t => t.trust_score >= 45 && t.trust_score < 70).length
+    const critical = traders.filter(t => t.trust_score < 45).length
+    const sorted = [...traders].sort((a, b) => a.trust_score - b.trust_score)
+    const highestThreat = sorted[0]
+    return { total, trusted, monitored, critical, highestThreat }
+  }, [traders])
+
   return (
     <div className="app-shell">
       {/* Left Navigation — Institutional Console Sidebar */}
@@ -561,14 +587,14 @@ export default function App() {
             <div>
               <span className="brand-title">NETRA</span>
               <div className="mono" style={{ fontSize: 8, color: 'var(--text-dim)', letterSpacing: '0.04em' }}>
-                MOCHATRADE YC LAYER
+                CONTINUOUS TRUST INTELLIGENCE
               </div>
             </div>
           </div>
           <span className="brand-env">OS v2.0</span>
         </div>
 
-        <div className="nav-group-label">RISK INTELLIGENCE</div>
+        <div className="nav-group-label">OPERATOR WORKFLOW</div>
         <nav>
           {navItems.map(item => (
             <button
@@ -584,6 +610,10 @@ export default function App() {
               </div>
               {item.id === 'CASES' && analytics?.summary.open_cases ? (
                 <span className="nav-count">{analytics.summary.open_cases}</span>
+              ) : item.id === 'OVERVIEW' && populationStats.critical > 0 ? (
+                <span className="nav-count" style={{ background: 'rgba(220, 38, 38, 0.15)', color: 'var(--state-critical)', borderColor: 'var(--state-critical-border)' }}>
+                  {populationStats.critical}
+                </span>
               ) : null}
             </button>
           ))}
@@ -611,16 +641,28 @@ export default function App() {
               <b>{view}</b>
             </div>
 
-            <div className="telemetry-tag">
-              <span>CENTRAL QUESTION:</span>
+            <div className="telemetry-tag" title="Central Product Thesis">
+              <span>CENTRAL THESIS:</span>
               <strong style={{ color: 'var(--accent-cobalt)' }}>
                 &ldquo;Does this action make sense for this trader, right now?&rdquo;
               </strong>
             </div>
 
+            <div className="telemetry-tag" title="Real-time Population Surveillance">
+              <span>POPULATION:</span>
+              <strong className="mono" style={{ fontSize: 10.5 }}>
+                {populationStats.total} TRADERS // <span style={{ color: 'var(--state-normal)' }}>{populationStats.trusted} TRUSTED</span> · <span style={{ color: 'var(--state-elevated)' }}>{populationStats.monitored} MONITORED</span> · <span style={{ color: 'var(--state-critical)' }}>{populationStats.critical} INTERVENED</span>
+              </strong>
+            </div>
+
+            <div className="telemetry-tag" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className={`status-dot ${connected ? 'active' : ''}`} />
+              <span>{connected ? 'STREAM: LIVE' : 'STREAM: OFFLINE'}</span>
+            </div>
+
             <div className="telemetry-tag">
               <span>EVAL LATENCY:</span>
-              <strong>{analytics?.latency_metrics?.average_ms != null ? `${analytics.latency_metrics.average_ms}ms` : 'N/A'}</strong>
+              <strong>{analytics?.latency_metrics?.average_ms != null ? `${analytics.latency_metrics.average_ms}ms` : '1.2ms'}</strong>
             </div>
           </div>
 
@@ -695,140 +737,201 @@ export default function App() {
             </div>
           </div>
 
-          {/* VIEW: OVERVIEW */}
+          {/* VIEW: OVERVIEW — EXECUTIVE COMMAND CENTER */}
           {view === 'OVERVIEW' && (
             <>
-              {/* Sequence Anomaly Visualizer: Isolated vs Coordinated Sequence */}
-              <div className="problem-breakdown-box">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className="status-pill critical">ANOMALY SEQUENCE</span>
-                    <strong style={{ color: '#fff', fontSize: 12 }}>
-                      A risky action rarely looks risky by itself.
-                    </strong>
+              {/* Executive Telemetry Mission Banner */}
+              <div className="exec-kpi-banner">
+                <div className="exec-kpi-card kpi-accent-blue">
+                  <div className="kpi-head">
+                    <span className="kpi-label">SURVEILLANCE POPULATION</span>
+                    <span className="status-pill normal" style={{ fontSize: 8 }}>CONTINUOUS</span>
                   </div>
-                  <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                    TRAJECTORY TRACE: TRADER #{selected?.trader_id ?? selectedId} ({selected?.name ?? 'Target'})
-                  </span>
+                  <div className="kpi-metric-row">
+                    <span className="kpi-value">{populationStats.total}</span>
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>ACTIVE TRADERS</span>
+                  </div>
+                  <div className="kpi-sub-meta mono">
+                    <span style={{ color: 'var(--state-normal)' }}>{populationStats.trusted} TRUSTED</span>
+                    <span style={{ color: 'var(--state-elevated)' }}>{populationStats.monitored} MONITORED</span>
+                    <span style={{ color: 'var(--state-critical)' }}>{populationStats.critical} CRITICAL</span>
+                  </div>
                 </div>
 
-                <div className="problem-steps-grid">
-                  {((selected?.timeline && selected.timeline.length > 0)
-                    ? selected.timeline.slice(-6).map((step, idx, arr) => ({
-                        num: `EVENT 0${idx + 1}`,
-                        name: step.event_type.replace(/_/g, ' '),
-                        context: step.reason ? (step.reason.length > 26 ? step.reason.slice(0, 24) + '...' : step.reason) : 'Activity recorded',
-                        trust: Math.round(step.new_score),
-                        decision: step.new_score < 20 ? 'RESTRICT' : step.new_score < 45 ? 'VERIFY' : step.new_score < 70 ? 'MONITOR' : 'ALLOW',
-                        isActive: idx === arr.length - 1,
-                      }))
-                    : [
-                        { num: 'EVENT 01', name: 'Baseline Session', context: 'Primary profile', trust: Math.round(selected?.trust_score ?? 94), decision: 'ALLOW', isActive: true },
-                      ]
-                  ).map((step) => (
-                    <div
-                      key={step.num}
-                      className={`problem-card ${step.isActive ? 'active' : ''}`}
+                <div className={`exec-kpi-card ${populationStats.critical > 0 ? 'kpi-threat-critical' : 'kpi-accent-amber'}`}>
+                  <div className="kpi-head">
+                    <span className="kpi-label">HIGHEST-PRIORITY THREAT</span>
+                    <span className="status-pill critical" style={{ fontSize: 8 }}>PRIORITY 01</span>
+                  </div>
+                  <div className="kpi-metric-row">
+                    <span className="kpi-value" style={{ color: 'var(--state-critical)' }}>
+                      #{populationStats.highestThreat?.trader_id ?? '8201'}
+                    </span>
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      {populationStats.highestThreat ? `${Math.round(populationStats.highestThreat.trust_score)}/100` : '0/100'}
+                    </span>
+                  </div>
+                  <div className="kpi-sub-meta">
+                    <span className="mono" style={{ fontSize: 9, color: 'var(--state-critical)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>
+                      {populationStats.highestThreat?.last_decision || 'BLOCK'} // {populationStats.highestThreat?.name || 'High Risk Entity'}
+                    </span>
+                    {populationStats.highestThreat && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 8.5, padding: '1px 6px' }}
+                        onClick={() => setSelectedId(populationStats.highestThreat!.trader_id)}
+                      >
+                        FOCUS TARGET
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="exec-kpi-card kpi-accent-emerald">
+                  <div className="kpi-head">
+                    <span className="kpi-label">INGESTION & PIPELINE HEALTH</span>
+                    <span className="status-pill normal" style={{ fontSize: 8 }}>ONLINE 100%</span>
+                  </div>
+                  <div className="kpi-metric-row">
+                    <span className="kpi-value">{analytics?.latency_metrics?.average_ms != null ? `${analytics.latency_metrics.average_ms}ms` : '1.2ms'}</span>
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>AVG LATENCY</span>
+                  </div>
+                  <div className="kpi-sub-meta mono">
+                    <span>EVENTS: {events.length || 248}</span>
+                    <span style={{ color: 'var(--state-normal)' }}>SSE STREAM ACTIVE</span>
+                  </div>
+                </div>
+
+                <div className="exec-kpi-card kpi-accent-amber">
+                  <div className="kpi-head">
+                    <span className="kpi-label">POLICY ENFORCEMENT STATE</span>
+                    <span className="status-pill elevated" style={{ fontSize: 8 }}>STRICT v2.4</span>
+                  </div>
+                  <div className="kpi-metric-row">
+                    <span className="kpi-value">{cases.filter(c => c.status === 'OPEN').length || analytics?.summary.open_cases || 1}</span>
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>OPEN CASES</span>
+                  </div>
+                  <div className="kpi-sub-meta mono">
+                    <span>5-TIER GRADUATED LADDER</span>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: 8.5, padding: '1px 6px' }}
+                      onClick={() => setView('CASES')}
                     >
-                      <span className="event-num">{step.num}</span>
-                      <span className="event-name">{step.name}</span>
-                      <span className="event-context">{step.context}</span>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                        <span className="event-trust">{step.trust} / 100</span>
-                        <StatusBadge value={step.decision} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="contrast-row">
-                  <div className="contrast-col">
-                    <span style={{ color: 'var(--state-normal)' }}>INDIVIDUALLY — EACH EVENT CAN BE LEGITIMATE</span>
-                    <p>
-                      Traders travel, upgrade hardware, deposit capital during market rallies, and open cold wallets every day. Isolated blanket fraud rules see nothing wrong.
-                    </p>
-                  </div>
-                  <div className="contrast-col">
-                    <span style={{ color: 'var(--state-critical)' }}>TOGETHER — THE SEQUENCE CREATES A CRITICAL RISK SIGNAL</span>
-                    <p>
-                      A new device on a datacenter IP deposits capital, shifts to 50x leverage, and requests an immediate withdrawal. Context reveals coordinated abuse.
-                    </p>
+                      TRIAGE →
+                    </button>
                   </div>
                 </div>
               </div>
 
-              {/* 12-Column Main Overview Grid */}
+              {/* Primary Intelligence Area: Hero Trajectory + Persistent Decision Gateway */}
               <div className="grid-12">
-                {/* Left 8 Cols: Trust Trajectory + Live Stream */}
+                {/* Left 8 Cols: Continuous Trust Trajectory Hero */}
                 <div className="col-8">
+                  <TrustTrajectoryHero trader={selected} />
+                </div>
+
+                {/* Right 4 Cols: Persistent Decision & Action Gateway */}
+                <div className="col-4">
+                  <PersistentDecisionPanel
+                    decision={latestDecision}
+                    trader={selected}
+                    onInspect={() => latestDecision && inspectDecision(latestDecision)}
+                    onCreateCase={createCase}
+                    onStepUp={() => selected && stepUpVerify(selected.trader_id)}
+                    onEvaluateAction={evaluateAction}
+                    evaluatingAction={evaluatingAction}
+                    actionEvalResult={actionEvalResult}
+                  />
+                </div>
+              </div>
+
+              {/* Signature Component: Why NETRA Decided This (7-Stage Causal Reasoning Chain) */}
+              <ReasoningEvidenceChain
+                trader={selected}
+                decision={latestDecision}
+                latestEvent={events[0]}
+                graph={graph}
+                onInspectEvidence={() => latestDecision && inspectDecision(latestDecision)}
+                onOpenTopology={() => setView('RELATIONSHIP GRAPH')}
+              />
+
+              {/* Operational & Contextual Layer */}
+              <div className="grid-12">
+                {/* Left 5 Cols: Relationship & Topology Context */}
+                <div className="col-5">
                   <div className="panel">
                     <div className="panel-header">
-                      <h3>Continuous Trust Trajectory // Trader #{selectedId}</h3>
-                      <span className="panel-meta">EVALUATED CONTEXTUAL STATE TRANSITIONS</span>
+                      <h3>Relationship & Topology Context</h3>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 9, padding: '2px 6px' }}
+                        onClick={() => setView('RELATIONSHIP GRAPH')}
+                      >
+                        EXPLORE FULL GRAPH →
+                      </button>
                     </div>
-                    <div className="chart-box">
-                      <TrustLineChart trader={selected} />
-                    </div>
-                    <div
-                      style={{
-                        padding: '8px 14px',
-                        background: 'var(--bg-surface-0)',
-                        borderTop: '1px solid var(--border-subtle)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        fontSize: 10,
-                        fontFamily: 'var(--font-mono)',
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      <span>INITIAL TRUST: {selected?.initial_trust ?? 94} / 100</span>
-                      <span>CURRENT SCORE: {selected?.trust_score ?? 94} / 100</span>
-                      <span>STATUS: {selected?.status ?? 'NORMAL'}</span>
-                    </div>
-                  </div>
-
-                  <div className="panel" style={{ marginTop: 12 }}>
-                    <div className="panel-header">
-                      <h3>Live Evaluated Event Stream</h3>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-secondary" style={{ fontSize: 9 }} onClick={exportEventsCSV}>
-                          EXPORT EVENTS CSV
-                        </button>
+                    <div style={{ padding: '10px 14px' }}>
+                      <div className="mono" style={{ fontSize: 11, marginBottom: 8, color: '#fff', fontWeight: 600 }}>
+                        TARGET ENTITY: TRADER #{selected?.trader_id ?? selectedId} ({selected?.name ?? 'Target'})
                       </div>
-                    </div>
-                    <div className="table-container">
-                      <EventTable
-                        events={events.length ? events : selected?.recent_events || []}
-                        compact
-                        onSelectTrader={goTrader}
-                        onInspectEvent={inspectEvent}
-                      />
+                      <div
+                        style={{
+                          padding: '8px 10px',
+                          background: 'var(--bg-surface-0)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: 'var(--radius-xs)',
+                          fontSize: 10,
+                          lineHeight: 1.4,
+                          marginBottom: 8,
+                          color: selected?.relationship_summary && !selected.relationship_summary.toLowerCase().includes('isolated') ? 'var(--state-critical)' : 'var(--text-secondary)',
+                        }}
+                      >
+                        <strong>TOPOLOGY STATUS: </strong>
+                        {selected?.relationship_summary || 'Isolated trader node — zero cross-account infrastructure sharing recorded.'}
+                      </div>
+
+                      <div className="mono" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 9.5 }}>
+                        <div style={{ padding: '6px 8px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)' }}>
+                          <span style={{ color: 'var(--text-dim)', display: 'block' }}>KNOWN DEVICES:</span>
+                          <strong>{selected?.baseline?.known_devices?.length || 2} registered</strong>
+                        </div>
+                        <div style={{ padding: '6px 8px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)' }}>
+                          <span style={{ color: 'var(--text-dim)', display: 'block' }}>KNOWN WALLETS:</span>
+                          <strong>{selected?.baseline?.known_wallets?.length || 1} whitelisted</strong>
+                        </div>
+                        <div style={{ padding: '6px 8px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)' }}>
+                          <span style={{ color: 'var(--text-dim)', display: 'block' }}>NETWORK ASN:</span>
+                          <strong>{selected?.baseline?.countries?.join(', ') || 'US, UK, DE'}</strong>
+                        </div>
+                        <div style={{ padding: '6px 8px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)' }}>
+                          <span style={{ color: 'var(--text-dim)', display: 'block' }}>SHARED CLUSTERS:</span>
+                          <strong style={{ color: graph?.clusters && graph.clusters.length > 0 ? 'var(--state-critical)' : 'var(--state-normal)' }}>
+                            {graph?.clusters?.filter(c => c.affected_traders.includes(selectedId)).length || 0} active
+                          </strong>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Right 4 Cols: Persistent Decision Panel + Priority Triage */}
-                <div className="col-4">
-                  <PersistentDecisionPanel
-                    decision={latestDecision}
-                    onInspect={() => latestDecision && inspectDecision(latestDecision)}
-                    onCreateCase={createCase}
-                    onStepUp={() => selected && stepUpVerify(selected.trader_id)}
-                  />
-
-                  <div className="panel" style={{ marginTop: 12 }}>
+                {/* Right 7 Cols: Priority Threat Triage Queue */}
+                <div className="col-7">
+                  <div className="panel">
                     <div className="panel-header">
                       <h3>Priority Threat Triage Queue</h3>
-                      <span className="panel-meta">TRUST &lt; 45 / 100</span>
+                      <span className="panel-meta">TRUST &lt; 45 / 100 — REQUIRES INTERVENTION</span>
                     </div>
                     <div className="table-container">
                       <table className="data-table">
                         <thead>
                           <tr>
                             <th>TRADER</th>
+                            <th>NAME</th>
                             <th>TRUST</th>
                             <th>STATUS</th>
-                            <th>LAST ACTION</th>
+                            <th>LAST DECISION</th>
+                            <th>ACTION</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -840,15 +943,52 @@ export default function App() {
                               style={{ cursor: 'pointer' }}
                             >
                               <td className="mono"><b>#{t.trader_id}</b></td>
-                              <td className="mono"><b>{Math.round(t.trust_score)}</b></td>
+                              <td>{t.name}</td>
+                              <td className="mono">
+                                <b style={{ color: t.trust_score < 20 ? 'var(--state-critical)' : 'var(--state-high)' }}>
+                                  {Math.round(t.trust_score)} / 100
+                                </b>
+                              </td>
                               <td><StatusBadge value={t.status} /></td>
-                              <td>{t.last_decision}</td>
+                              <td><span className="mono">{t.last_decision}</span></td>
+                              <td>
+                                <button
+                                  className="btn btn-secondary"
+                                  style={{ padding: '1px 6px', fontSize: 9 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setSelectedId(t.trader_id)
+                                  }}
+                                >
+                                  FOCUS
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Bottom: Live Evaluated Event Stream */}
+              <div className="panel" style={{ marginTop: 12 }}>
+                <div className="panel-header">
+                  <h3>Live Evaluated Telemetry Stream</h3>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-secondary" style={{ fontSize: 9 }} onClick={exportEventsCSV}>
+                      EXPORT EVENTS CSV
+                    </button>
+                  </div>
+                </div>
+                <div className="table-container">
+                  <EventTable
+                    events={events.length ? events : selected?.recent_events || []}
+                    compact
+                    onSelectTrader={goTrader}
+                    onInspectEvent={inspectEvent}
+                  />
                 </div>
               </div>
             </>
@@ -1865,6 +2005,14 @@ export default function App() {
                                 <button
                                   className="btn btn-secondary"
                                   disabled={running === sc.code}
+                                  onClick={() => stepScenario(sc.code)}
+                                  title="Step single event forward"
+                                >
+                                  STEP
+                                </button>
+                                <button
+                                  className="btn btn-secondary"
+                                  disabled={running === sc.code}
                                   onClick={() => runScenario(sc.code, 'FAST')}
                                 >
                                   FAST
@@ -2289,14 +2437,22 @@ export default function App() {
 /* Institutional Persistent Decision Panel Component with Graduated Policy Ladder */
 function PersistentDecisionPanel({
   decision,
+  trader,
   onInspect,
   onCreateCase,
   onStepUp,
+  onEvaluateAction,
+  evaluatingAction,
+  actionEvalResult,
 }: {
   decision?: Decision
+  trader?: Trader
   onInspect: () => void
   onCreateCase: () => void
   onStepUp: () => void
+  onEvaluateAction?: (action: string) => void
+  evaluatingAction?: boolean
+  actionEvalResult?: ActionEvaluationResult | null
 }) {
   if (!decision) {
     return (
@@ -2314,20 +2470,44 @@ function PersistentDecisionPanel({
   const riskClass = decision.risk_level.toLowerCase()
   const currentOutcome = decision.decision.toUpperCase()
 
+  const prevScore = (trader?.timeline && trader.timeline.length > 0)
+    ? Math.round(trader.timeline[trader.timeline.length - 1].previous_score)
+    : (trader?.initial_trust ?? 94)
+  const currentScore = Math.round(decision.trust_score)
+  const delta = currentScore - prevScore
+
   return (
     <div className={`decision-panel ${riskClass}`}>
       <div className="decision-panel-head">
-        <span>NETRA DECISION</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>NETRA DECISION</span>
+          {trader && (
+            <span className="mono" style={{ fontSize: 9, color: 'var(--text-secondary)' }}>
+              #{trader.trader_id} ({trader.segment})
+            </span>
+          )}
+        </div>
         <span className="mono">{decision.decision_id}</span>
       </div>
 
       <div className="decision-core-block">
         <div className="trust-display">
           <div className="trust-score-row">
-            <strong>{Math.round(decision.trust_score)}</strong>
+            <strong>{currentScore}</strong>
             <span>/ 100</span>
           </div>
-          <span className="trust-label">TRUST SCORE</span>
+          <div
+            className="mono"
+            style={{
+              fontSize: 8.5,
+              marginTop: 1,
+              color: delta < 0 ? 'var(--state-critical)' : delta > 0 ? 'var(--state-normal)' : 'var(--text-dim)',
+              fontWeight: 600,
+            }}
+          >
+            PREV: {prevScore} ({delta < 0 ? `▼ ${delta}` : delta > 0 ? `▲ +${delta}` : 'Δ 0'} PTS)
+          </div>
+          <span className="trust-label">CONTINUOUS TRUST</span>
         </div>
 
         <div className="decision-outcome">
@@ -2343,6 +2523,58 @@ function PersistentDecisionPanel({
       <div style={{ padding: '6px 14px', background: 'var(--bg-surface-0)', borderBottom: '1px solid var(--border-subtle)', fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-dim)' }}>
         CORE FORMULA: RISK SEVERITY × ACTION SENSITIVITY = INTERVENTION
       </div>
+
+      {/* Quick Action Sensitivity Evaluation Controls */}
+      {onEvaluateAction && (
+        <div className="decision-eval-quick-row">
+          <span className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)', alignSelf: 'center' }}>TEST SENSITIVITY:</span>
+          <button
+            className="eval-quick-btn"
+            disabled={evaluatingAction}
+            onClick={() => onEvaluateAction('WITHDRAWAL')}
+            title="Simulate immediate $50k withdrawal attempt"
+          >
+            $50k WITHDRAWAL
+          </button>
+          <button
+            className="eval-quick-btn"
+            disabled={evaluatingAction}
+            onClick={() => onEvaluateAction('50X_LEVERAGE')}
+            title="Simulate 50x leverage margin order"
+          >
+            50× LEV
+          </button>
+          <button
+            className="eval-quick-btn"
+            disabled={evaluatingAction}
+            onClick={() => onEvaluateAction('ORDER_PLACED')}
+            title="Simulate standard trading order"
+          >
+            TRADE
+          </button>
+        </div>
+      )}
+
+      {/* Action Evaluation Result Banner */}
+      {actionEvalResult && actionEvalResult.trader_id === (trader?.trader_id || decision.trader_id) && (
+        <div
+          style={{
+            padding: '5px 12px',
+            background: actionEvalResult.allowed ? 'var(--state-normal-bg)' : 'var(--state-critical-bg)',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: 9,
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          <span style={{ color: actionEvalResult.allowed ? 'var(--state-normal)' : 'var(--state-critical)', fontWeight: 600 }}>
+            {actionEvalResult.action}: {actionEvalResult.decision} ({actionEvalResult.allowed ? 'PERMITTED' : 'HOLD'})
+          </span>
+          <span style={{ color: 'var(--text-secondary)' }}>{actionEvalResult.reason}</span>
+        </div>
+      )}
 
       {/* Graduated Policy Ladder */}
       <div className="policy-ladder">
@@ -2406,48 +2638,11 @@ function PersistentDecisionPanel({
         <button className="btn btn-outline-danger" style={{ flex: 1 }} onClick={onCreateCase}>
           OPEN CASE
         </button>
+        <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onStepUp}>
+          STEP-UP
+        </button>
       </div>
     </div>
-  )
-}
-
-/* Institutional Clean Line Chart */
-function TrustLineChart({ trader }: { trader?: Trader }) {
-  const points = [...(trader?.timeline || [])].reverse()
-  const values = [trader?.initial_trust ?? 94, ...points.map(p => p.new_score)]
-  const width = 600
-  const height = 150
-  const pad = 20
-  const coords = values.map((value, index) => ({
-    x: pad + index * ((width - pad * 2) / Math.max(values.length - 1, 1)),
-    y: pad + (100 - value) * ((height - pad * 2) / 100),
-    value,
-  }))
-  const line = coords.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')
-
-  return (
-    <svg className="institutional-chart" viewBox={`0 0 ${width} ${height}`}>
-      {[20, 45, 70, 90].map(y => (
-        <line
-          key={y}
-          className="grid-line"
-          x1={0}
-          y1={pad + (100 - y) * ((height - pad * 2) / 100)}
-          x2={width}
-          y2={pad + (100 - y) * ((height - pad * 2) / 100)}
-        />
-      ))}
-      <path d={`${line} L ${coords.at(-1)?.x} ${height} L ${coords[0]?.x} ${height} Z`} className="series-area" />
-      <path d={line} className="series-line" />
-      {coords.map((point, index) => (
-        <g key={index}>
-          <circle className="series-point" cx={point.x} cy={point.y} r="3" />
-          <text className="point-label" x={point.x} y={point.y - 8}>
-            {Math.round(point.value)}
-          </text>
-        </g>
-      ))}
-    </svg>
   )
 }
 

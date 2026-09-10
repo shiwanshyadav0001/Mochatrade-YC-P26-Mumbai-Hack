@@ -66,7 +66,7 @@ export function CommandPalette({
       { id: 'act-reset', title: 'SYSTEM // Re-seed SQLite Persistent Baseline', category: 'ACTIONS', action: onResetDemo, badge: 'RESET' },
     ]
 
-    const traderItems: CommandItem[] = traders.slice(0, 15).map(t => ({
+    const traderItems: CommandItem[] = traders.map(t => ({
       id: `trader-${t.trader_id}`,
       title: `TRADER #${t.trader_id} — ${t.name} [${t.segment}]`,
       category: 'TRADERS',
