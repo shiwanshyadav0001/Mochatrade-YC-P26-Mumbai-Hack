@@ -320,6 +320,14 @@ button:disabled {
   background: var(--state-normal);
   box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
 }
+.status-dot.connecting {
+  background: var(--state-elevated);
+  box-shadow: 0 0 6px rgba(217, 119, 6, 0.6);
+  animation: sse-pulse 1.2s infinite ease-in-out;
+}
+.status-dot.offline {
+  background: var(--text-dim);
+}
 
 /* ==========================================================================
    Top Institutional Status & Telemetry Bar
@@ -1841,14 +1849,115 @@ button:disabled {
   animation: sse-pulse 2s infinite ease-in-out;
 }
 
+.stream-status-dot.dot-connecting {
+  background: var(--state-elevated);
+  box-shadow: 0 0 6px rgba(217, 119, 6, 0.7);
+  animation: sse-pulse 1.2s infinite ease-in-out;
+}
+
+.stream-status-dot.dot-reconnecting {
+  background: var(--state-elevated);
+  box-shadow: 0 0 6px rgba(217, 119, 6, 0.7);
+  animation: sse-pulse 0.9s infinite ease-in-out;
+}
+
 .stream-status-dot.dot-offline {
   background: var(--state-critical);
   box-shadow: 0 0 6px rgba(220, 38, 38, 0.7);
 }
 
+.stream-status-dot.dot-standby {
+  background: var(--text-dim);
+}
+
 @keyframes sse-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+/* ==========================================================================
+   Overview Operational Command Surface
+   ========================================================================== */
+
+.overview-command-surface {
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent-cobalt);
+  border-radius: var(--radius-md);
+  padding: 12px 18px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  box-shadow: var(--shadow-panel);
+}
+
+.command-surface-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.command-system-kicker {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--accent-cobalt);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.command-system-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.2px;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.command-system-posture-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.command-system-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+}
+
+.command-posture-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+  letter-spacing: 0.4px;
+}
+
+.command-timestamp {
+  font-size: 9.5px;
+  color: var(--text-muted);
+}
+
+.command-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1400px) {
+  .topbar-secondary-tag {
+    display: none !important;
+  }
 }
 
 .focus-mode-badge {

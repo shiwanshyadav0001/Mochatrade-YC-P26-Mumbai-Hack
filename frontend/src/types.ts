@@ -1,4 +1,5 @@
 export type UserRole = 'ADMIN' | 'RISK_ANALYST' | 'INVESTIGATOR' | 'VIEWER'
+export type StreamStatus = 'CONNECTED' | 'CONNECTING' | 'RECONNECTING' | 'DISCONNECTED' | 'ERROR'
 
 export type Evidence = {
   id: string

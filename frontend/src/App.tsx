@@ -12,7 +12,7 @@ import { PolicyMatrixSimulator } from './components/PolicyMatrixSimulator'
 import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
 import { ScenarioAttackReplay } from './components/ScenarioAttackReplay'
 import { TrustTrajectoryHero } from './components/TrustTrajectoryHero'
-import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, Policy, RiskEventItem, Trader, UserRole } from './types'
+import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, Policy, RiskEventItem, StreamStatus, Trader, UserRole } from './types'
 
 type View =
   | 'OVERVIEW'
@@ -96,6 +96,7 @@ export default function App() {
   const [events, setEvents] = useState<Event[]>([])
   const [decisions, setDecisions] = useState<Decision[]>([])
   const [connected, setConnected] = useState(false)
+  const [streamStatus, setStreamStatus] = useState<StreamStatus>('CONNECTING')
   const [notice, setNotice] = useState('')
   const [running, setRunning] = useState<string | null>(null)
   const [nodeInfo, setNodeInfo] = useState('')
@@ -222,15 +223,38 @@ export default function App() {
         streamRef.current.close()
       } catch {}
     }
+    setStreamStatus('CONNECTING')
     const stream = new EventSource('/api/stream')
     streamRef.current = stream
+
     stream.onopen = () => {
       setConnected(true)
+      setStreamStatus('CONNECTED')
       setNotice('REAL-TIME SSE TELEMETRY STREAM ESTABLISHED.')
     }
-    stream.onerror = () => setConnected(false)
+
+    stream.addEventListener('connected', () => {
+      setConnected(true)
+      setStreamStatus('CONNECTED')
+    })
+
+    stream.onerror = () => {
+      if (stream.readyState === EventSource.CONNECTING) {
+        setStreamStatus('RECONNECTING')
+        setConnected(false)
+      } else if (stream.readyState === EventSource.CLOSED) {
+        setStreamStatus('DISCONNECTED')
+        setConnected(false)
+      } else {
+        setStreamStatus('ERROR')
+        setConnected(false)
+      }
+    }
+
     stream.onmessage = message => {
       try {
+        setConnected(true)
+        setStreamStatus('CONNECTED')
         const payload = JSON.parse(message.data)
         if (payload.type === 'NEW_EVENT' || payload.type === 'RISK_UPDATED') {
           soundManager.playEventTick()
@@ -723,11 +747,11 @@ export default function App() {
 
         <div className="sidebar-footer">
           <div className="system-status-indicator">
-            <span className={`status-dot ${connected ? 'active' : ''}`} />
-            <span>{connected ? 'ENGINE ONLINE // 100%' : 'DISCONNECTED'}</span>
+            <span className={`status-dot ${connected ? 'active' : streamStatus === 'CONNECTING' || streamStatus === 'RECONNECTING' ? 'connecting' : 'offline'}`} />
+            <span>{connected ? 'ENGINE ONLINE // 100%' : streamStatus === 'RECONNECTING' ? 'RECONNECTING // AUTO' : streamStatus === 'CONNECTING' ? 'CONNECTING...' : 'ENGINE STANDBY'}</span>
           </div>
           <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 4 }}>
-            BOSCH CODERS // MOCHATRADE YC P26
+            NETRA TRUST ENGINE v2.0 // REST+SSE
           </div>
         </div>
       </aside>
@@ -743,7 +767,7 @@ export default function App() {
               <b>{view}</b>
             </div>
 
-            <div className="telemetry-tag" title="Central Product Thesis">
+            <div className="telemetry-tag topbar-secondary-tag" title="Central Product Thesis">
               <span>CENTRAL THESIS:</span>
               <strong style={{ color: 'var(--accent-cobalt)' }}>
                 &ldquo;Does this action make sense for this trader, right now?&rdquo;
@@ -758,8 +782,8 @@ export default function App() {
             </div>
 
             <div className="telemetry-tag" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span className={`status-dot ${connected ? 'active' : ''}`} />
-              <span>{connected ? 'STREAM: LIVE' : 'STREAM: OFFLINE'}</span>
+              <span className={`status-dot ${connected ? 'active' : streamStatus === 'CONNECTING' || streamStatus === 'RECONNECTING' ? 'connecting' : 'offline'}`} />
+              <span>{connected ? 'STREAM: LIVE' : streamStatus === 'RECONNECTING' ? 'STREAM: RECONNECTING' : streamStatus === 'CONNECTING' ? 'STREAM: CONNECTING' : 'STREAM: STANDBY'}</span>
             </div>
 
             <div className="telemetry-tag">
@@ -843,6 +867,44 @@ export default function App() {
           {/* VIEW: OVERVIEW — EXECUTIVE COMMAND CENTER */}
           {view === 'OVERVIEW' && (
             <>
+              {/* Executive Operational Command Surface */}
+              <div className="overview-command-surface">
+                <div className="command-surface-identity">
+                  <div className="command-system-kicker mono">CONTINUOUS TRUST INTELLIGENCE // REAL-TIME FLEET SURVEILLANCE</div>
+                  <h1 className="command-system-title">NETRA OPERATIONAL COMMAND</h1>
+                  <div className="command-system-posture-bar">
+                    <span className="command-system-status-indicator">
+                      <span className={`status-dot ${connected ? 'active' : streamStatus === 'CONNECTING' || streamStatus === 'RECONNECTING' ? 'connecting' : 'offline'}`} />
+                      <span className="mono" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.4px' }}>
+                        {connected ? 'SURVEILLANCE ENGINE ACTIVE' : streamStatus === 'RECONNECTING' ? 'STREAM RECONNECTING' : streamStatus === 'CONNECTING' ? 'STREAM INITIALIZING' : 'REST SURVEILLANCE ACTIVE'}
+                      </span>
+                    </span>
+                    <span className="command-posture-badge mono" style={{
+                      background: populationStats.critical > 0 ? 'rgba(220, 38, 38, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                      color: populationStats.critical > 0 ? 'var(--state-critical)' : 'var(--state-normal)',
+                      borderColor: populationStats.critical > 0 ? 'var(--state-critical-border)' : 'var(--state-normal-border)'
+                    }}>
+                      FLEET THREAT LEVEL: {populationStats.critical > 0 ? `${populationStats.critical} CRITICAL INTERVENTIONS` : 'NOMINAL // ELEVATED MONITORING'}
+                    </span>
+                    <span className="command-timestamp mono">
+                      LAST TELEMETRY: {formatTime(lastEventTime || events[0]?.timestamp)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="command-quick-actions">
+                  <button className="btn btn-primary" onClick={() => setView('LIVE MONITOR')}>
+                    LIVE MONITOR →
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => setView('CASES')}>
+                    TRIAGE CASES ({cases.filter(c => c.status === 'OPEN').length})
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => setCmdOpen(true)} title="Press Cmd+K / Ctrl+K">
+                    QUICK DISPATCH (⌘K)
+                  </button>
+                </div>
+              </div>
+
               {/* Executive Telemetry Mission Banner */}
               <div className="exec-kpi-banner">
                 <div className="exec-kpi-card kpi-accent-blue">
@@ -1107,6 +1169,7 @@ export default function App() {
               selected={selected}
               latestDecision={latestDecision}
               connected={connected}
+              streamStatus={streamStatus}
               analytics={analytics}
               autoFocus={autoFocus}
               recentEventIds={recentEventIds}

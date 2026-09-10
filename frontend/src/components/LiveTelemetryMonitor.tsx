@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import type { ActionEvaluationResult, Analytics, Decision, Event, Graph, Trader } from '../types'
+import type { ActionEvaluationResult, Analytics, Decision, Event, Graph, StreamStatus, Trader } from '../types'
 import { InteractiveGraph } from './InteractiveGraph'
 import { ReasoningEvidenceChain } from './ReasoningEvidenceChain'
 
@@ -11,6 +11,7 @@ interface LiveTelemetryMonitorProps {
   selected: Trader | undefined
   latestDecision: Decision | undefined
   connected: boolean
+  streamStatus?: StreamStatus
   analytics: Analytics | undefined
   autoFocus: boolean
   recentEventIds: string[]
@@ -217,6 +218,7 @@ export function LiveTelemetryMonitor({
   selected,
   latestDecision,
   connected,
+  streamStatus,
   analytics,
   autoFocus,
   recentEventIds,
@@ -390,11 +392,34 @@ export function LiveTelemetryMonitor({
             <div className="telemetry-metric-item">
               <span className="telemetry-metric-label">STREAM CONNECTION</span>
               <div className="telemetry-metric-value">
-                <span className={`stream-status-dot ${connected ? 'dot-live' : 'dot-offline'}`} />
-                <span style={{ color: connected ? 'var(--state-normal)' : 'var(--state-critical)', fontWeight: 700 }}>
-                  {connected ? 'LIVE // SSE STREAM ACTIVE' : 'DISCONNECTED // STANDBY'}
+                <span className={`stream-status-dot ${
+                  connected || streamStatus === 'CONNECTED'
+                    ? 'dot-live'
+                    : streamStatus === 'CONNECTING'
+                    ? 'dot-connecting'
+                    : streamStatus === 'RECONNECTING'
+                    ? 'dot-reconnecting'
+                    : 'dot-offline'
+                }`} />
+                <span style={{
+                  color: connected || streamStatus === 'CONNECTED'
+                    ? 'var(--state-normal)'
+                    : streamStatus === 'CONNECTING' || streamStatus === 'RECONNECTING'
+                    ? 'var(--state-elevated)'
+                    : 'var(--state-critical)',
+                  fontWeight: 700
+                }}>
+                  {connected || streamStatus === 'CONNECTED'
+                    ? 'LIVE // SSE STREAM ACTIVE'
+                    : streamStatus === 'CONNECTING'
+                    ? 'CONNECTING // INITIALIZING SSE'
+                    : streamStatus === 'RECONNECTING'
+                    ? 'RECONNECTING // AUTO RETRY'
+                    : streamStatus === 'ERROR'
+                    ? 'STREAM ERROR // STANDBY'
+                    : 'STANDBY // REST ACTIVE'}
                 </span>
-                {!connected && (
+                {!connected && streamStatus !== 'CONNECTED' && (
                   <button
                     className="btn btn-secondary"
                     style={{ padding: '1px 6px', fontSize: 9, marginLeft: 6 }}
@@ -409,7 +434,7 @@ export function LiveTelemetryMonitor({
             <div className="telemetry-metric-item">
               <span className="telemetry-metric-label">STREAM VELOCITY</span>
               <div className="telemetry-metric-value mono">
-                {events.length} EVENTS INGESTED
+                {events.length} EVENTS INGESTED <span style={{ fontSize: 9, color: 'var(--text-dim)', fontWeight: 400, marginLeft: 4 }}>// REST SYNCED</span>
               </div>
             </div>
 
