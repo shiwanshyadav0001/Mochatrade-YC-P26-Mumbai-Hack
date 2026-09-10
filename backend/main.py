@@ -180,6 +180,7 @@ async def post_event(
 def get_events_endpoint(
     trader_id: str | None = None,
     limit: int = 100,
+    _: dict[str, str] = Depends(get_current_actor),
 ) -> list[dict[str, Any]]:
     return engine.get_events(trader_id=trader_id, limit=limit)
 

@@ -8,12 +8,21 @@ type AuthResponse = {
   role: UserRole
 }
 
+const DEV_CREDENTIALS: Record<UserRole, { username: string; password: string }> = {
+  ADMIN: { username: 'admin', password: 'admin-pass' },
+  RISK_ANALYST: { username: 'analyst', password: 'analyst-pass' },
+  INVESTIGATOR: { username: 'investigator', password: 'investigator-pass' },
+  VIEWER: { username: 'viewer', password: 'viewer-pass' },
+}
+
 let currentRole: UserRole = 'ADMIN'
 let accessToken = sessionStorage.getItem('netra_access_token') || ''
 
 export const setActorRole = async (role: UserRole): Promise<void> => {
-  const username = import.meta.env[`VITE_NETRA_${role}_USERNAME`] as string | undefined
-  const password = import.meta.env[`VITE_NETRA_${role}_PASSWORD`] as string | undefined
+  const envUser = import.meta.env[`VITE_NETRA_${role}_USERNAME`] as string | undefined
+  const envPass = import.meta.env[`VITE_NETRA_${role}_PASSWORD`] as string | undefined
+  const username = envUser || DEV_CREDENTIALS[role]?.username
+  const password = envPass || DEV_CREDENTIALS[role]?.password
   if (!username || !password) {
     throw new Error(`Authentication credentials are not configured for ${role}`)
   }

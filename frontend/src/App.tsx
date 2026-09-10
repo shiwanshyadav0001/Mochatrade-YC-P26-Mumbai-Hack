@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, setActorRole } from './api'
 import { soundManager } from './audio'
 import { CommandPalette } from './components/CommandPalette'
@@ -65,6 +65,10 @@ export default function App() {
   const [soundMuted, setSoundMuted] = useState(soundManager.isMuted())
   const [traders, setTraders] = useState<Trader[]>([])
   const [selectedId, setSelectedId] = useState('7842')
+  const selectedIdRef = useRef(selectedId)
+  useEffect(() => {
+    selectedIdRef.current = selectedId
+  }, [selectedId])
   const [selected, setSelected] = useState<Trader | undefined>()
   const [analytics, setAnalytics] = useState<Analytics | undefined>()
   const [cases, setCases] = useState<Case[]>([])
@@ -118,18 +122,19 @@ export default function App() {
 
   const [caseNoteInputs, setCaseNoteInputs] = useState<Record<string, string>>({})
 
-  const refreshSelected = useCallback(async (id = selectedId) => {
+  const refreshSelected = useCallback(async (id?: string) => {
+    const targetId = id || selectedIdRef.current
     try {
       const [trader, nextGraph] = await Promise.all([
-        api.get<Trader>(`/traders/${id}`),
-        api.get<Graph>(`/traders/${id}/graph`),
+        api.get<Trader>(`/traders/${targetId}`),
+        api.get<Graph>(`/traders/${targetId}/graph`),
       ])
       setSelected(trader)
       setGraph(nextGraph)
     } catch {
       // Ignore
     }
-  }, [selectedId])
+  }, [])
 
   const refreshAll = useCallback(async () => {
     try {
@@ -153,12 +158,12 @@ export default function App() {
       setEvents(nextEvents)
       setRiskEvents(nextRiskEvents)
       setSystemGraph(nextSysGraph)
-      await refreshSelected(selectedId)
+      await refreshSelected(selectedIdRef.current)
     } catch (error) {
       setNotice('API reconnecting... Ensure FastAPI service is active on port 8000.')
       console.error(error)
     }
-  }, [refreshSelected, selectedId])
+  }, [refreshSelected])
 
   const verifyAuditChain = useCallback(async () => {
     setVerifyingAudit(true)
@@ -211,10 +216,19 @@ export default function App() {
             }
             setDecisions(current => [result.decision, ...current].slice(0, 50))
           }
-          if (result?.event?.trader_id === selectedId) {
-            refreshSelected(selectedId)
+          if (result?.event?.trader_id === selectedIdRef.current) {
+            refreshSelected(selectedIdRef.current)
           }
           refreshAll()
+        } else if (
+          payload.type === 'CASE_CREATED' ||
+          payload.type === 'CASE_UPDATED' ||
+          payload.type === 'TRADER_UPDATED' ||
+          payload.type === 'POLICY_UPDATED' ||
+          payload.type === 'GRAPH_UPDATED'
+        ) {
+          refreshAll()
+          refreshSelected(selectedIdRef.current)
         } else if (payload.type === 'DEMO_RESET') {
           setEvents([])
           refreshAll()
@@ -225,7 +239,7 @@ export default function App() {
       }
     }
     return () => stream.close()
-  }, [refreshAll, refreshSelected, selectedId])
+  }, [refreshAll, refreshSelected])
 
   const handleRoleChange = async (newRole: UserRole) => {
     try {

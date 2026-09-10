@@ -25,10 +25,28 @@ def _unauthorized(detail: str = "Invalid or missing authentication token") -> HT
     )
 
 
+DEFAULT_DEV_JWT_SECRET = "netra-dev-jwt-secret-insecure-only-for-local-hackathon"
+_DEV_USERS_CACHE: dict[str, dict[str, str]] | None = None
+
+
+def _get_dev_users() -> dict[str, dict[str, str]]:
+    global _DEV_USERS_CACHE
+    if _DEV_USERS_CACHE is None:
+        _DEV_USERS_CACHE = {
+            "admin": {"role": "ADMIN", "password_hash": hash_password("admin-pass", salt=b"netra-dev-admin-salt")},
+            "analyst": {"role": "RISK_ANALYST", "password_hash": hash_password("analyst-pass", salt=b"netra-dev-analyst-salt")},
+            "investigator": {"role": "INVESTIGATOR", "password_hash": hash_password("investigator-pass", salt=b"netra-dev-invest-salt")},
+            "viewer": {"role": "VIEWER", "password_hash": hash_password("viewer-pass", salt=b"netra-dev-viewer-salt")},
+        }
+    return _DEV_USERS_CACHE
+
+
 def _secret() -> bytes:
     value = os.getenv("NETRA_JWT_SECRET")
     if not value:
-        raise HTTPException(status_code=503, detail="Authentication is not configured")
+        if os.getenv("ENVIRONMENT") == "production":
+            raise HTTPException(status_code=503, detail="Authentication is not configured")
+        value = DEFAULT_DEV_JWT_SECRET
     return value.encode("utf-8")
 
 
@@ -64,7 +82,9 @@ def verify_password(password: str, encoded: str) -> bool:
 def load_users() -> dict[str, dict[str, str]]:
     raw = os.getenv("NETRA_AUTH_USERS_JSON", "")
     if not raw:
-        return {}
+        if os.getenv("ENVIRONMENT") == "production":
+            return {}
+        return _get_dev_users()
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:

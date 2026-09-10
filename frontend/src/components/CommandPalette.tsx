@@ -51,6 +51,7 @@ export function CommandPalette({
       { id: 'nav-overview', title: 'OVERVIEW // Institutional Telemetry Dashboard', category: 'NAVIGATION', action: () => onNavigate('OVERVIEW') },
       { id: 'nav-live', title: 'LIVE MONITOR // Streaming Event Ingestion Feed', category: 'NAVIGATION', action: () => onNavigate('LIVE MONITOR'), badge: 'LIVE' },
       { id: 'nav-traders', title: 'TRADERS // Individual Baselines & Historical Profiles', category: 'NAVIGATION', action: () => onNavigate('TRADERS') },
+      { id: 'nav-risk-events', title: 'RISK EVENTS // Contextual Threat Incident Feed', category: 'NAVIGATION', action: () => onNavigate('RISK EVENTS'), badge: 'EVENTS' },
       { id: 'nav-graph', title: 'TOPOLOGY // Multi-Hop Infrastructure Link Graph', category: 'NAVIGATION', action: () => onNavigate('RELATIONSHIP GRAPH'), badge: 'GRAPH' },
       { id: 'nav-cases', title: 'CASES // Investigation Triage Queue', category: 'NAVIGATION', action: () => onNavigate('CASES') },
       { id: 'nav-policy', title: 'POLICIES // Parameter Matrix & Pre-Commit Simulator', category: 'NAVIGATION', action: () => onNavigate('POLICIES') },
