@@ -833,31 +833,42 @@ export default function App() {
         )}
 
         <div className="workspace">
-          {/* Trust Pipeline: OBSERVE → BASELINE → CONNECT → SCORE → EXPLAIN */}
+          {/* NETRA Continuous Intelligence Pipeline Strip */}
           <div className="pipeline-strip">
             <div className="pipeline-steps">
-              <span className="mono" style={{ color: 'var(--text-dim)', marginRight: 6 }}>
-                WHOLE-SYSTEM PIPELINE:
+              <span className="mono" style={{ color: 'var(--text-dim)', marginRight: 4, fontWeight: 700 }}>
+                INTELLIGENCE LOOP:
               </span>
-              <span className="pipeline-step">01 OBSERVE (EVENTS)</span>
+              <span className="pipeline-step">01 EVENT</span>
               <span className="pipeline-arrow">→</span>
-              <span className="pipeline-step">02 BASELINE (HABITS)</span>
+              <span className="pipeline-step">02 CONTEXT</span>
               <span className="pipeline-arrow">→</span>
-              <span className="pipeline-step">03 CONNECT (TOPOLOGY)</span>
+              <span className="pipeline-step">03 SIGNALS</span>
               <span className="pipeline-arrow">→</span>
-              <span className="pipeline-step active">04 SCORE (0–100 TRUST)</span>
+              <span className="pipeline-step">04 BASELINE</span>
               <span className="pipeline-arrow">→</span>
-              <span className="pipeline-step active">05 EXPLAIN (ACTION)</span>
+              <span className="pipeline-step">05 TOPOLOGY</span>
+              <span className="pipeline-arrow">→</span>
+              <span className="pipeline-step active">06 TRUST IMPACT</span>
+              <span className="pipeline-arrow">→</span>
+              <span className="pipeline-step active">07 POLICY</span>
+              <span className="pipeline-arrow">→</span>
+              <span className="pipeline-step active">08 ACTION</span>
+              <span className="pipeline-arrow">→</span>
+              <span className="pipeline-step">09 AUDIT</span>
             </div>
 
             <div className="pipeline-actions">
-              <button className="btn btn-secondary" onClick={() => runScenario('FLAGSHIP', 'FAST')}>
-                FLAGSHIP ATTACK SURGE
+              <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', alignSelf: 'center', marginRight: 4 }}>
+                SCENARIO DISPATCH:
+              </span>
+              <button className="btn btn-secondary" onClick={() => runScenario('FLAGSHIP', 'FAST')} title="Simulate multi-vector credential compromise and unauthorized extraction">
+                FLAGSHIP ATTACK
               </button>
-              <button className="btn btn-secondary" onClick={() => runScenario('TRAVEL', 'NORMAL')}>
+              <button className="btn btn-secondary" onClick={() => runScenario('TRAVEL', 'NORMAL')} title="Simulate verified cross-border access with baseline conformity">
                 LEGITIMATE TRAVEL
               </button>
-              <button className="btn btn-secondary" onClick={resetDemo}>
+              <button className="btn btn-secondary" onClick={resetDemo} title="Reset all trader baselines and clear telemetry buffer">
                 RESET BASELINE
               </button>
             </div>

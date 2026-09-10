@@ -569,6 +569,14 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+@media (max-width: 1200px) {
+  .pipeline-strip {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
 /* ==========================================================================
    Panels & Surfaces
    ========================================================================== */

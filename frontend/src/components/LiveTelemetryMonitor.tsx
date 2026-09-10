@@ -1316,7 +1316,7 @@ export function LiveTelemetryMonitor({
                       <span>RESTRICT</span>
                       <small>Action hold (withdrawal pause)</small>
                     </div>
-                    <div className={`ladder-step ${(focusedDecision?.decision || 'ALLOW') === 'BLOCK' ? 'active restrict' : ''}`}>
+                    <div className={`ladder-step ${(focusedDecision?.decision || 'ALLOW') === 'BLOCK' ? 'active block' : ''}`}>
                       <span>BLOCK</span>
                       <small>Critical halt / session isolated</small>
                     </div>
