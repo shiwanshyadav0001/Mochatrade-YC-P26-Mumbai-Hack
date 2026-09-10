@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import type { ActionEvaluationResult, Analytics, Decision, Event, Graph, Trader } from '../types'
 import { InteractiveGraph } from './InteractiveGraph'
 import { ReasoningEvidenceChain } from './ReasoningEvidenceChain'
@@ -241,6 +241,7 @@ export function LiveTelemetryMonitor({
   const [eventTypeFilter, setEventTypeFilter] = useState('ALL')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null)
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
   // Fleet Population Metrics
   const populationStats = useMemo(() => {
@@ -316,6 +317,44 @@ export function LiveTelemetryMonitor({
     })
     return map
   }, [decisions])
+
+  // Sync selectedEventId with incoming events if none selected or if autoFocus is active
+  useEffect(() => {
+    if (!selectedEventId && filteredEvents.length > 0) {
+      setSelectedEventId(filteredEvents[0].event_id)
+    }
+  }, [filteredEvents, selectedEventId])
+
+  // Resolve actively focused operational event
+  const focusedEvent = useMemo(() => {
+    if (selectedEventId) {
+      const found = events.find(e => e.event_id === selectedEventId) || selected?.recent_events?.find(e => e.event_id === selectedEventId)
+      if (found) return found
+    }
+    return filteredEvents[0] || events[0] || selected?.recent_events?.[0]
+  }, [selectedEventId, events, selected, filteredEvents])
+
+  // Active trader for focused event
+  const focusedTrader = useMemo(() => {
+    if (!focusedEvent) return selected
+    return traderMap.get(focusedEvent.trader_id) || (focusedEvent.trader_id === selected?.trader_id ? selected : undefined)
+  }, [focusedEvent, traderMap, selected])
+
+  // Active decision for focused event
+  const focusedDecision = useMemo(() => {
+    if (!focusedEvent) return latestDecision
+    return (
+      decisionMap.get(focusedEvent.event_id) ||
+      decisions.find(d => d.event_id === focusedEvent.event_id || (d.trader_id === focusedEvent.trader_id && d.timestamp === focusedEvent.timestamp)) ||
+      (focusedEvent.trader_id === selectedId ? latestDecision : undefined)
+    )
+  }, [focusedEvent, decisionMap, decisions, selectedId, latestDecision])
+
+  // Active baseline analysis for focused event
+  const focusedBaselineAnalysis = useMemo(() => {
+    if (!focusedEvent) return null
+    return analyzeEventBaseline(focusedEvent, focusedTrader)
+  }, [focusedEvent, focusedTrader])
 
   const getPriority = (ev: Event): 'CRITICAL' | 'HIGH' | 'ELEVATED' | 'MONITOR' | 'NORMAL' => {
     if (
@@ -666,6 +705,7 @@ export function LiveTelemetryMonitor({
                     const priority = getPriority(ev)
                     const isNew = recentEventIds.includes(ev.event_id)
                     const isFocusedTrader = ev.trader_id === selectedId
+                    const isSelectedEvent = focusedEvent?.event_id === ev.event_id
                     const trader = traderMap.get(ev.trader_id)
                     const decision = decisionMap.get(ev.event_id) || (isFocusedTrader ? latestDecision : undefined)
                     const causal = getCausalChain(ev, trader, decision)
@@ -674,11 +714,20 @@ export function LiveTelemetryMonitor({
                     return (
                       <React.Fragment key={ev.event_id}>
                         <tr
-                          className={`${isNew ? 'live-event-new-row' : ''} ${isFocusedTrader ? 'live-row-focused-trader' : ''}`}
+                          className={`${isNew ? 'live-event-new-row' : ''} ${isFocusedTrader ? 'live-row-focused-trader' : ''} ${isSelectedEvent ? 'live-row-selected' : ''}`}
                           style={{
-                            borderLeft: isFocusedTrader ? '3px solid var(--accent-cobalt)' : '3px solid transparent',
-                            background: isExpanded ? 'rgba(37, 99, 235, 0.08)' : undefined,
+                            cursor: 'pointer',
+                            borderLeft: isSelectedEvent ? '3px solid var(--accent-cobalt)' : isFocusedTrader ? '3px solid rgba(59, 130, 246, 0.5)' : '3px solid transparent',
+                            background: isSelectedEvent ? 'rgba(37, 99, 235, 0.12)' : isExpanded ? 'rgba(37, 99, 235, 0.08)' : undefined,
                           }}
+                          onClick={() => {
+                            setSelectedEventId(ev.event_id)
+                            if (ev.trader_id !== selectedId) {
+                              onSelectTrader(ev.trader_id)
+                              onToggleAutoFocus(false)
+                            }
+                          }}
+                          title="Click to establish operational focus on this event"
                         >
                           <td>
                             <span className={`priority-pill priority-${priority.toLowerCase()}`}>
@@ -701,7 +750,8 @@ export function LiveTelemetryMonitor({
                                   borderColor: isFocusedTrader ? 'var(--accent-cobalt)' : 'var(--border-subtle)',
                                 }}
                                 title="Click to focus this trader"
-                                onClick={() => {
+                                onClick={e => {
+                                  e.stopPropagation()
                                   onSelectTrader(ev.trader_id)
                                   onToggleAutoFocus(false)
                                 }}
@@ -766,14 +816,20 @@ export function LiveTelemetryMonitor({
                                   color: isExpanded ? '#fff' : undefined,
                                 }}
                                 title="Expand Causal Intelligence reasoning for this event"
-                                onClick={() => setExpandedEventId(isExpanded ? null : ev.event_id)}
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setExpandedEventId(isExpanded ? null : ev.event_id)
+                                }}
                               >
                                 {isExpanded ? 'CLOSE' : 'EXPLAIN'}
                               </button>
                               <button
                                 className="btn btn-secondary"
                                 style={{ padding: '2px 6px', fontSize: 9 }}
-                                onClick={() => onInspectEvent(ev)}
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  onInspectEvent(ev)
+                                }}
                                 title="Open full event raw telemetry"
                               >
                                 INSPECT
@@ -984,132 +1040,293 @@ export function LiveTelemetryMonitor({
         </div>
       </div>
 
-      {/* RIGHT COLUMN (4 COLS): Active Focus Dossier, Decision Panel, Reasoning Chain & Topology */}
+      {/* RIGHT COLUMN (4 COLS): Operational Intelligence Loop Console */}
       <div className="col-4">
-        {/* Active Focus Dossier Card */}
-        {selected && (
-          <div className="live-focus-card">
-            <div className="live-focus-header">
+        {/* OPERATIONAL INTELLIGENCE LOOP PANEL: EVENT → CONTEXT → SIGNALS → TRUST IMPACT → POLICY & ACTION */}
+        {focusedEvent ? (
+          <div className="op-loop-panel">
+            <div className="op-loop-header">
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
-                    #{selected.trader_id} {selected.name}
+                  <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa' }}>
+                    OPERATIONAL FOCUS // {focusedEvent.event_id}
                   </span>
-                  <span className={`status-pill ${selected.status.toLowerCase()}`}>
-                    {selected.status}
+                  <span className={`priority-pill priority-${getPriority(focusedEvent).toLowerCase()}`}>
+                    {getPriority(focusedEvent)}
                   </span>
                 </div>
                 <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 2 }}>
-                  {selected.segment || 'PRO TRADER'} // BASELINE TRUST: {selected.initial_trust ?? 94}
+                  INGESTED: {formatTime(focusedEvent.timestamp)} │ TRADER #{focusedEvent.trader_id} {focusedTrader ? `(${focusedTrader.name})` : ''}
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: selected.trust_score >= 80 ? 'var(--state-normal)' : selected.trust_score < 45 ? 'var(--state-critical)' : 'var(--state-elevated)' }}>
-                  {Math.round(selected.trust_score)}
-                  <span style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 400 }}>/100</span>
-                </div>
-                <span className="mono" style={{ fontSize: 8, color: 'var(--text-dim)' }}>TRUST SCORE</span>
-              </div>
-            </div>
-            <div className="live-focus-body">
-              <div className="live-focus-row">
-                <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>KNOWN DEVICES:</span>
-                <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
-                  {selected.baseline?.known_devices?.length ?? 1} REGISTERED
-                </span>
-              </div>
-              <div className="live-focus-row">
-                <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>LOGIN HOURS:</span>
-                <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
-                  {selected.baseline?.normal_login_hours?.length ? `${selected.baseline.normal_login_hours.join(', ')} UTC` : '09-17 UTC'}
-                </span>
-              </div>
-              <div className="live-focus-row">
-                <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>GEOGRAPHY:</span>
-                <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
-                  {selected.baseline?.countries?.join(', ') || 'US, UK'}
-                </span>
-              </div>
-              <div className="live-focus-row">
-                <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>MAX TYPICAL DEP:</span>
-                <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
-                  {money(selected.baseline?.deposit_amount || 2000)}
-                </span>
-              </div>
-              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
-                  {selected.event_count} EVENTS OBSERVED
-                </span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {focusedEvent.trader_id !== selectedId && (
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 9, padding: '2px 8px' }}
+                    onClick={() => {
+                      onSelectTrader(focusedEvent.trader_id)
+                      onToggleAutoFocus(false)
+                    }}
+                    title="Focus this trader across the console"
+                  >
+                    FOCUS TRADER
+                  </button>
+                )}
                 <button
                   className="btn btn-secondary"
-                  style={{ padding: '2px 8px', fontSize: 9 }}
-                  onClick={() => onInspectTrader(selected)}
+                  style={{ fontSize: 9, padding: '2px 8px' }}
+                  onClick={() => onInspectEvent(focusedEvent)}
+                  title="Inspect raw event telemetry"
                 >
-                  FULL DOSSIER →
+                  RAW TELEMETRY
                 </button>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Persistent Decision Panel with Graduated Policy Ladder */}
-        {latestDecision ? (
-          <div className={`decision-panel ${latestDecision.risk_level.toLowerCase()}`}>
-            <div className="decision-panel-head">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>NETRA DECISION</span>
-                {selected && (
-                  <span className="mono" style={{ fontSize: 9, color: 'var(--text-secondary)' }}>
-                    #{selected.trader_id} ({selected.segment})
-                  </span>
-                )}
-              </div>
-              <span className="mono">{latestDecision.decision_id}</span>
-            </div>
-
-            <div className="decision-core-block">
-              <div className="trust-display">
-                <div className="trust-score-row">
-                  <strong>{Math.round(latestDecision.trust_score)}</strong>
-                  <span>/ 100</span>
+            {/* 5-Step Operational Intelligence Loop */}
+            <div className="op-loop-stepper">
+              {/* STEP 1: EVENT (OBSERVED TELEMETRY) */}
+              <div className="op-loop-step">
+                <div className="op-loop-step-head">
+                  <span style={{ color: '#38bdf8' }}>01 · EVENT OBSERVED</span>
+                  <span className="mono" style={{ color: 'var(--text-dim)' }}>SOURCE: {focusedEvent.source || 'LIVE'}</span>
                 </div>
-                {(() => {
-                  const prevDecisionScore = latestDecision.previous_score != null ? Math.round(latestDecision.previous_score) : (selected?.initial_trust ?? 94)
-                  const decDelta = Math.round(latestDecision.trust_score - prevDecisionScore)
-                  return (
-                    <div
-                      className="mono"
-                      style={{
-                        fontSize: 8.5,
-                        marginTop: 1,
-                        color: decDelta < 0 ? 'var(--state-critical)' : 'var(--state-normal)',
-                        fontWeight: 600,
-                      }}
-                    >
-                      PREV: {prevDecisionScore} ({decDelta < 0 ? `▼ ${decDelta}` : `▲ +${decDelta}`} PTS)
+                <div className="op-loop-step-body">
+                  <div style={{ fontWeight: 600, fontSize: 12, color: '#fff' }}>
+                    {focusedEvent.event_type.replace(/_/g, ' ')}
+                    {focusedEvent.amount != null ? ` — ${money(focusedEvent.amount)} ${focusedEvent.currency || 'USD'}` : ''}
+                    {focusedEvent.leverage != null ? ` — ${focusedEvent.leverage}× Leverage` : ''}
+                  </div>
+                  <div className="mono" style={{ fontSize: 9.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    {focusedEvent.device_id ? `HW: [${focusedEvent.device_id}] ` : ''}
+                    {focusedEvent.ip_address ? `IP: ${focusedEvent.ip_address} (${focusedEvent.network_type || 'residential'}) ` : ''}
+                    {focusedEvent.country ? `Geo: ${focusedEvent.city ? `${focusedEvent.city}, ` : ''}${focusedEvent.country}` : ''}
+                    {focusedEvent.wallet_address ? `Dst: ${focusedEvent.wallet_address}` : ''}
+                  </div>
+                </div>
+              </div>
+
+              {/* STEP 2: BASELINE COMPARISON */}
+              <div className="op-loop-step">
+                <div className="op-loop-step-head">
+                  <span style={{ color: focusedBaselineAnalysis?.isNormal ? 'var(--state-normal)' : 'var(--state-elevated)' }}>
+                    02 · INDIVIDUAL BASELINE
+                  </span>
+                  <span className="mono" style={{ color: focusedBaselineAnalysis?.isNormal ? 'var(--state-normal)' : 'var(--state-critical)' }}>
+                    {focusedBaselineAnalysis?.deviationBadge || 'BASELINE CONFORMANT'}
+                  </span>
+                </div>
+                <div className="op-loop-step-body">
+                  <div style={{ fontSize: 10.5, color: focusedBaselineAnalysis?.isNormal ? 'var(--text-primary)' : '#fca5a5' }}>
+                    {focusedBaselineAnalysis?.summary || 'Establishing baseline norms (insufficient historical telemetry)'}
+                  </div>
+                  {focusedTrader?.baseline && (
+                    <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 3 }}>
+                      HABITUAL MAX DEP: {money(focusedTrader.baseline.deposit_amount || 2500)} │ LEV NORM: ≤{focusedTrader.baseline.leverage || 5}× │ KNOWN HW: {focusedTrader.baseline.known_devices?.length ?? 1} │ GEO: {focusedTrader.baseline.countries?.join(', ') || 'US'}
                     </div>
-                  )
-                })()}
-                <span className="trust-label">CONTINUOUS TRUST</span>
+                  )}
+                </div>
               </div>
 
-              <div className="decision-outcome">
-                <span className={`decision-text ${latestDecision.decision.toLowerCase()}`}>
-                  {latestDecision.decision}
-                </span>
-                <span className="decision-action-sub">{latestDecision.action.replace(/_/g, ' ')}</span>
-                <span className={`status-pill ${latestDecision.risk_level.toLowerCase()}`}>{latestDecision.risk_level}</span>
+              {/* STEP 3: SIGNALS (SEQUENCE, TOPOLOGY, ANOMALY) */}
+              <div className="op-loop-step">
+                <div className="op-loop-step-head">
+                  <span style={{ color: '#fb923c' }}>03 · SIGNALS &amp; ATTRIBUTION</span>
+                  <span className="mono" style={{ color: 'var(--text-dim)' }}>WHY NETRA CARED</span>
+                </div>
+                <div className="op-loop-step-body">
+                  {/* Signals List from actual backend decision */}
+                  {Array.isArray(focusedDecision?.signals) && focusedDecision.signals.length > 0 ? (
+                    <div className="op-loop-signals-list">
+                      {focusedDecision.signals.map((sig, sIdx) => {
+                        const isHigh = sig.severity >= 60
+                        return (
+                          <div key={sIdx} className="op-loop-signal-item">
+                            <span
+                              className="op-loop-signal-bullet"
+                              style={{
+                                background: isHigh ? 'rgba(220, 38, 38, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                                color: isHigh ? '#f87171' : '#fbbf24',
+                                border: isHigh ? '1px solid var(--state-critical)' : '1px solid var(--state-elevated)',
+                              }}
+                            >
+                              {sig.category}
+                            </span>
+                            <div style={{ flex: 1 }}>
+                              <span style={{ color: '#fff', fontWeight: 500 }}>{sig.reason}</span>
+                              <span className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)', marginLeft: 6 }}>
+                                (SEV: {Math.round(sig.severity)}/100)
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : focusedBaselineAnalysis && !focusedBaselineAnalysis.isNormal ? (
+                    <div className="op-loop-signals-list">
+                      {focusedBaselineAnalysis.details.map((det, dIdx) => (
+                        <div key={dIdx} className="op-loop-signal-item">
+                          <span
+                            className="op-loop-signal-bullet"
+                            style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid var(--state-elevated)' }}
+                          >
+                            BASELINE
+                          </span>
+                          <span style={{ color: '#fff' }}>{det}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mono" style={{ fontSize: 9.5, color: 'var(--state-normal)' }}>
+                      ● NO MATERIAL ELEVATED RISK SIGNALS — ROUTINE CONFORMANT INGESTION
+                    </div>
+                  )}
+
+                  {/* Topology Cluster status if any */}
+                  {(() => {
+                    const cluster = graph?.clusters?.find(c => Array.isArray(c.affected_traders) && c.affected_traders.includes(focusedEvent.trader_id))
+                    if (cluster) {
+                      return (
+                        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, fontSize: 9.5 }}>
+                          <span className="op-loop-signal-bullet" style={{ background: 'rgba(220, 38, 38, 0.2)', color: '#f87171', border: '1px solid var(--state-critical)' }}>
+                            TOPOLOGY
+                          </span>
+                          <span style={{ color: '#fca5a5' }}>
+                            Linked to Cluster #{cluster.cluster_id} ({cluster.cluster_type.replace(/_/g, ' ')}) — shared entities detected
+                          </span>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
+                </div>
+              </div>
+
+              {/* STEP 4: TRUST IMPACT */}
+              <div className="op-loop-step">
+                <div className="op-loop-step-head">
+                  <span style={{ color: '#a78bfa' }}>04 · TRUST IMPACT</span>
+                  <span className="mono" style={{ color: 'var(--text-dim)' }}>CONTINUOUS STATE</span>
+                </div>
+                <div className="op-loop-step-body">
+                  {(() => {
+                    const prev = focusedDecision?.previous_score != null
+                      ? Math.round(focusedDecision.previous_score)
+                      : (focusedTrader?.initial_trust ?? 94)
+                    const curr = focusedDecision
+                      ? Math.round(focusedDecision.trust_score)
+                      : (focusedTrader ? Math.round(focusedTrader.trust_score) : 94)
+                    const delta = Math.round(curr - prev)
+                    const rLevel = focusedDecision?.risk_level || (focusedTrader?.status || 'NORMAL')
+                    return (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div className="op-trust-shift-display">
+                          <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>{prev}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>→</span>
+                          <span className="op-trust-score-val" style={{ color: curr >= 80 ? 'var(--state-normal)' : curr < 45 ? 'var(--state-critical)' : 'var(--state-elevated)' }}>
+                            {curr}
+                          </span>
+                          <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>/ 100</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span
+                            className="op-trust-delta-badge"
+                            style={{
+                              background: delta < 0 ? 'rgba(220, 38, 38, 0.2)' : delta > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                              color: delta < 0 ? 'var(--state-critical)' : delta > 0 ? 'var(--state-normal)' : 'var(--text-secondary)',
+                              border: delta < 0 ? '1px solid var(--state-critical)' : delta > 0 ? '1px solid var(--state-normal)' : '1px solid var(--border-subtle)',
+                            }}
+                          >
+                            {delta < 0 ? `▼ ${delta} PTS` : delta > 0 ? `▲ +${delta} PTS` : 'Δ 0 PTS'}
+                          </span>
+                          <span className={`status-pill ${rLevel.toLowerCase()}`}>
+                            {rLevel}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </div>
+
+              {/* STEP 5: PROPORTIONAL POLICY DECISION & ACTION */}
+              <div className="op-loop-step">
+                <div className="op-loop-step-head">
+                  <span style={{ color: '#34d399' }}>05 · PROPORTIONAL POLICY DECISION &amp; ACTION</span>
+                  <span className="mono" style={{ color: 'var(--text-dim)' }}>
+                    LATENCY: {focusedDecision?.processing_latency_ms ?? 1.2}ms
+                  </span>
+                </div>
+                <div className="op-loop-step-body">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div>
+                      <span className={`decision-text ${(focusedDecision?.decision || 'ALLOW').toLowerCase()}`} style={{ fontSize: 16 }}>
+                        {focusedDecision?.decision || 'ALLOW'}
+                      </span>
+                      <span className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 8 }}>
+                        POLICY: {focusedDecision?.policy_version || '2026.09-v2.1'}
+                      </span>
+                    </div>
+                    <span className="mono" style={{ fontSize: 9, color: 'var(--text-secondary)' }}>
+                      CONF: {focusedDecision?.confidence || 'HIGH'}
+                    </span>
+                  </div>
+
+                  {/* Graduated Policy Ladder */}
+                  <div className="policy-ladder" style={{ marginBottom: 6 }}>
+                    <div className={`ladder-step ${(focusedDecision?.decision || 'ALLOW') === 'ALLOW' ? 'active allow' : ''}`}>
+                      <span>ALLOW</span>
+                      <small>Normal activity permitted</small>
+                    </div>
+                    <div className={`ladder-step ${(focusedDecision?.decision || 'ALLOW') === 'MONITOR' ? 'active monitor' : ''}`}>
+                      <span>MONITOR</span>
+                      <small>Observe elevated context</small>
+                    </div>
+                    <div className={`ladder-step ${(focusedDecision?.decision || 'ALLOW') === 'VERIFY' ? 'active verify' : ''}`}>
+                      <span>VERIFY</span>
+                      <small>Step-up 2FA / biometric</small>
+                    </div>
+                    <div className={`ladder-step ${(focusedDecision?.decision || 'ALLOW') === 'RESTRICT' ? 'active restrict' : ''}`}>
+                      <span>RESTRICT</span>
+                      <small>Action hold (withdrawal pause)</small>
+                    </div>
+                    <div className={`ladder-step ${(focusedDecision?.decision || 'ALLOW') === 'BLOCK' ? 'active restrict' : ''}`}>
+                      <span>BLOCK</span>
+                      <small>Critical halt / session isolated</small>
+                    </div>
+                  </div>
+
+                  {/* Enforcement action / reason */}
+                  <div style={{ fontSize: 10.5, color: '#fff', background: 'var(--bg-surface-2)', padding: '6px 10px', borderRadius: 3, borderLeft: '2px solid var(--accent-cobalt)' }}>
+                    <b>ENFORCEMENT:</b> {
+                      focusedDecision?.enforcement?.reason || (
+                        focusedDecision?.decision === 'BLOCK'
+                          ? 'Immediate account session isolated; trading killswitch engaged.'
+                          : focusedDecision?.decision === 'RESTRICT'
+                          ? 'Capital withdrawal restricted; read-only access preserved.'
+                          : focusedDecision?.decision === 'VERIFY'
+                          ? 'Action paused; Step-Up Biometric 2FA verification challenge issued.'
+                          : focusedDecision?.decision === 'MONITOR'
+                          ? 'Activity permitted with elevated surveillance and sequence audit.'
+                          : 'Action permitted under standard passive continuous monitoring.'
+                      )
+                    }
+                  </div>
+
+                  {/* SOP Recommendation */}
+                  {focusedDecision?.explanation?.recommendation && (
+                    <div className="mono" style={{ fontSize: 9, color: 'var(--text-secondary)', marginTop: 4 }}>
+                      SOP: {focusedDecision.explanation.recommendation}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Core Policy Formula Header */}
-            <div style={{ padding: '6px 14px', background: 'var(--bg-surface-0)', borderBottom: '1px solid var(--border-subtle)', fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-dim)' }}>
-              CORE FORMULA: RISK SEVERITY × ACTION SENSITIVITY = INTERVENTION
-            </div>
-
-            {/* Quick Action Sensitivity Evaluation Controls */}
+            {/* Quick Action Sensitivity Testing on Focused Trader */}
             {onEvaluateAction && (
-              <div className="decision-eval-quick-row">
+              <div className="decision-eval-quick-row" style={{ padding: '6px 14px', background: 'var(--bg-surface-0)', borderTop: '1px solid var(--border-subtle)' }}>
                 <span className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)', alignSelf: 'center' }}>TEST SENSITIVITY:</span>
                 <button
                   className="eval-quick-btn"
@@ -1139,12 +1356,12 @@ export function LiveTelemetryMonitor({
             )}
 
             {/* Action Evaluation Result Banner */}
-            {actionEvalResult && actionEvalResult.trader_id === (selected?.trader_id || latestDecision.trader_id) && (
+            {actionEvalResult && actionEvalResult.trader_id === (focusedTrader?.trader_id || selected?.trader_id) && (
               <div
                 style={{
                   padding: '5px 12px',
                   background: actionEvalResult.allowed ? 'var(--state-normal-bg)' : 'var(--state-critical-bg)',
-                  borderBottom: '1px solid var(--border-subtle)',
+                  borderTop: '1px solid var(--border-subtle)',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -1159,69 +1376,30 @@ export function LiveTelemetryMonitor({
               </div>
             )}
 
-            {/* Graduated Policy Ladder */}
-            <div className="policy-ladder">
-              <div className={`ladder-step ${latestDecision.decision === 'ALLOW' ? 'active allow' : ''}`}>
-                <span>ALLOW</span>
-                <small>Normal activity permitted</small>
-              </div>
-              <div className={`ladder-step ${latestDecision.decision === 'MONITOR' ? 'active monitor' : ''}`}>
-                <span>MONITOR</span>
-                <small>Observe elevated context</small>
-              </div>
-              <div className={`ladder-step ${latestDecision.decision === 'VERIFY' ? 'active verify' : ''}`}>
-                <span>VERIFY</span>
-                <small>Step-up 2FA / biometric</small>
-              </div>
-              <div className={`ladder-step ${latestDecision.decision === 'RESTRICT' ? 'active restrict' : ''}`}>
-                <span>RESTRICT</span>
-                <small>Action hold (withdrawal pause)</small>
-              </div>
-              <div className={`ladder-step ${latestDecision.decision === 'BLOCK' ? 'active restrict' : ''}`}>
-                <span>BLOCK</span>
-                <small>Critical halt / session isolated</small>
-              </div>
-            </div>
-
-            <div className="decision-telemetry-grid">
-              <div className="decision-telemetry-cell">
-                <span>CONFIDENCE:</span>
-                <strong>{latestDecision.confidence}</strong>
-              </div>
-              <div className="decision-telemetry-cell">
-                <span>EVAL LATENCY:</span>
-                <strong>{latestDecision.processing_latency_ms}ms</strong>
-              </div>
-              <div className="decision-telemetry-cell">
-                <span>POLICY:</span>
-                <strong>{latestDecision.policy_version}</strong>
-              </div>
-            </div>
-
-            <div className="decision-contributors-block">
-              <div className="contributors-label">Top Risk Contributors:</div>
-              <div className="contributors-list">
-                {latestDecision.explanation.top_factors.slice(0, 5).map((factor, idx) => (
-                  <div key={idx} className="contributor-row">
-                    <span className="contributor-bullet">•</span>
-                    <span>{factor}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="decision-recommendation-note">
-              <b>SOP RECOMMENDATION:</b> {latestDecision.explanation.recommendation}
-            </div>
-
-            <div className="decision-actions-row">
-              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => onInspectDecision(latestDecision)}>
-                VIEW EVIDENCE
-              </button>
-              <button className="btn btn-outline-danger" style={{ flex: 1 }} onClick={onCreateCase}>
+            {/* Operational Action Controls */}
+            <div style={{ padding: '8px 14px', background: 'var(--bg-surface-0)', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: 6 }}>
+              {focusedDecision && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ flex: 1, fontSize: 9.5 }}
+                  onClick={() => onInspectDecision(focusedDecision)}
+                  title="Open full cryptographic evidence dossier"
+                >
+                  INSPECT EVIDENCE →
+                </button>
+              )}
+              <button
+                className="btn btn-outline-danger"
+                style={{ flex: 1, fontSize: 9.5 }}
+                onClick={onCreateCase}
+              >
                 OPEN CASE
               </button>
-              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => selected && onStepUp(selected.trader_id)}>
+              <button
+                className="btn btn-secondary"
+                style={{ flex: 1, fontSize: 9.5 }}
+                onClick={() => focusedTrader && onStepUp(focusedTrader.trader_id)}
+              >
                 STEP-UP
               </button>
             </div>
@@ -1229,22 +1407,22 @@ export function LiveTelemetryMonitor({
         ) : (
           <div className="decision-panel">
             <div className="decision-panel-head">
-              <span>NETRA DECISION // ACTIVE MONITORING</span>
+              <span>NETRA OPERATIONAL CONSOLE // AWAITING TELEMETRY</span>
             </div>
             <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 11 }}>
-              Observing incoming events against trader individual baselines. Inject an event or run a scenario.
+              Select an event from the streaming feed to inspect its operational causal loop.
             </div>
           </div>
         )}
 
-        {/* Causal Reasoning Chain */}
+        {/* Causal Reasoning Chain (tied directly to focused event and decision) */}
         <div style={{ marginTop: 12 }}>
           <ReasoningEvidenceChain
-            trader={selected}
-            decision={latestDecision}
-            latestEvent={events.find(e => e.trader_id === selectedId) || selected?.recent_events?.[0]}
+            trader={focusedTrader || selected}
+            decision={focusedDecision || latestDecision}
+            latestEvent={focusedEvent || events.find(e => e.trader_id === selectedId) || selected?.recent_events?.[0]}
             graph={graph}
-            onInspectEvidence={() => latestDecision && onInspectDecision(latestDecision)}
+            onInspectEvidence={() => (focusedDecision || latestDecision) && onInspectDecision(focusedDecision || latestDecision!)}
             onOpenTopology={() => onNavigateView('RELATIONSHIP GRAPH')}
           />
         </div>

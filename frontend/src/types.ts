@@ -6,6 +6,17 @@ export type Evidence = {
   label: string
 }
 
+export type RiskSignalItem = {
+  category: string
+  feature: string
+  severity: number
+  contribution?: number
+  reason: string
+  evidence?: Record<string, any>
+  rule_code?: string
+  source?: string
+}
+
 export type Decision = {
   decision_id: string
   timestamp: string
@@ -20,12 +31,19 @@ export type Decision = {
   triggered_rules: string[]
   processing_latency_ms: number
   policy_version: string
-  explanation: {
-    summary: string
-    top_factors: string[]
-    recommendation: string
-    evidence: Evidence[]
+  explanation?: {
+    summary?: string
+    top_factors?: string[]
+    recommendation?: string
+    evidence?: Evidence[]
   }
+  signals?: RiskSignalItem[]
+  enforcement?: ActionEvaluationResult
+  amount?: number
+  device_id?: string
+  ip_address?: string
+  wallet_address?: string
+  source?: string
 }
 
 export type Transition = {

@@ -2055,6 +2055,111 @@ button:disabled {
   100% { opacity: 1; transform: translateY(0); }
 }
 
+/* Operational Intelligence Loop Console Styles */
+.live-row-selected {
+  background: rgba(37, 99, 235, 0.12) !important;
+  border-left: 3px solid var(--accent-cobalt) !important;
+}
+
+.live-row-selected:hover {
+  background: rgba(37, 99, 235, 0.18) !important;
+}
+
+.op-loop-panel {
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-panel);
+}
+
+.op-loop-header {
+  padding: 10px 14px;
+  background: var(--bg-surface-0);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.op-loop-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-subtle);
+  margin: 0;
+  padding: 0;
+}
+
+.op-loop-step {
+  background: var(--bg-surface-1);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.op-loop-step-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.op-loop-step-body {
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.op-loop-signals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.op-loop-signal-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.op-loop-signal-bullet {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.op-trust-shift-display {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+}
+
+.op-trust-score-val {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.op-trust-delta-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
 /* ==========================================================================
    NETRA Slice 2 — Scenario Lab / Interactive Attack Replay Stepper
    ========================================================================== */

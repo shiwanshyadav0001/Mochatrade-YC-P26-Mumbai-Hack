@@ -313,7 +313,7 @@ export default function App() {
   }
 
   const inspectEvent = (event: Event) => {
-    const matchedDecision = decisions.find(d => d.timestamp === event.timestamp || d.trader_id === event.trader_id)
+    const matchedDecision = decisions.find(d => (event.event_id && d.event_id === event.event_id) || d.timestamp === event.timestamp || d.trader_id === event.trader_id)
     const matchedTrader = traders.find(t => t.trader_id === event.trader_id)
     setDrawerData({ event, decision: matchedDecision, trader: matchedTrader })
     setDrawerOpen(true)
@@ -2272,17 +2272,23 @@ function PersistentDecisionPanel({
       <div className="decision-contributors-block">
         <div className="contributors-label">Top Risk Contributors:</div>
         <div className="contributors-list">
-          {decision.explanation.top_factors.slice(0, 6).map((factor, idx) => (
-            <div key={idx} className="contributor-row">
-              <span className="contributor-bullet">•</span>
-              <span>{factor}</span>
+          {Array.isArray(decision?.explanation?.top_factors) && decision.explanation.top_factors.length > 0 ? (
+            decision.explanation.top_factors.slice(0, 6).map((factor, idx) => (
+              <div key={idx} className="contributor-row">
+                <span className="contributor-bullet">•</span>
+                <span>{factor}</span>
+              </div>
+            ))
+          ) : (
+            <div className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', padding: '4px 0' }}>
+              No elevated risk factors detected — conforming to baseline norms
             </div>
-          ))}
+          )}
         </div>
       </div>
 
       <div className="decision-recommendation-note">
-        <b>SOP RECOMMENDATION:</b> {decision.explanation.recommendation}
+        <b>SOP RECOMMENDATION:</b> {decision?.explanation?.recommendation || 'Maintain standard passive continuous monitoring.'}
       </div>
 
       <div className="decision-actions-row">

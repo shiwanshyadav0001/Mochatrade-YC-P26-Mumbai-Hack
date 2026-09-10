@@ -58,31 +58,31 @@ export function ReasoningEvidenceChain({
 
   // 2. Individual Baseline Deviation
   const baseline = trader.baseline
-  const knownDevices = baseline?.known_devices || []
+  const knownDevices = Array.isArray(baseline?.known_devices) ? baseline.known_devices : []
   const baselineLev = baseline?.leverage ?? 5
   const baselineDeposit = baseline?.deposit_amount ?? 2500
-  const baselineCountries = baseline?.countries || ['US']
+  const baselineCountries = Array.isArray(baseline?.countries) ? baseline.countries : ['US']
 
   const deviations: string[] = []
   if (event?.device_id && knownDevices.length > 0 && !knownDevices.includes(event.device_id)) {
-    deviations.push(`Device not recognized (${knownDevices.length} known)`)
+    deviations.push(`Device not recognized (${knownDevices.length} registered)`)
   }
   if (event?.leverage && event.leverage > baselineLev) {
     deviations.push(`${event.leverage}× lev > baseline max ${baselineLev}×`)
   }
-  if (event?.amount && event.amount > baselineDeposit * 3) {
+  if (event?.amount && event.amount > baselineDeposit * 2.5) {
     deviations.push(`${money(event.amount)} exceeds habitual ${money(baselineDeposit)}`)
   }
   if (event?.country && !baselineCountries.includes(event.country)) {
     deviations.push(`New geo: ${event.country} (baseline: ${baselineCountries.join(', ')})`)
   }
   if (event?.network_type === 'datacenter') {
-    deviations.push('Datacenter proxy / VPN network type')
+    deviations.push('Datacenter proxy / VPN hosting facility')
   }
 
   const baselineSummary = deviations.length > 0
     ? deviations.join('; ')
-    : 'All parameters conform to individual habitual baseline'
+    : 'All telemetry parameters conform to individual habitual baseline'
   const isBaselineDeviant = deviations.length > 0
 
   // 3. Action Sensitivity & Sequence Context
@@ -110,7 +110,7 @@ export function ReasoningEvidenceChain({
   }
 
   // 4. Relationship & Topology
-  const cluster = graph?.clusters?.find(c => c.affected_traders.includes(trader.trader_id))
+  const cluster = graph?.clusters?.find(c => Array.isArray(c.affected_traders) && c.affected_traders.includes(trader.trader_id))
   const relationshipText = trader.relationship_summary
     ? trader.relationship_summary
     : cluster
@@ -118,23 +118,32 @@ export function ReasoningEvidenceChain({
     : 'Isolated entity — zero cross-account infrastructure sharing'
   const hasTopologyRisk = !!(cluster || (trader.relationship_summary && !trader.relationship_summary.toLowerCase().includes('isolated')))
 
-  // 5. Anomaly Signals & Rules
-  const triggeredRules = decision?.triggered_rules || []
-  const topFactors = decision?.explanation.top_factors || []
-  const anomalyText = triggeredRules.length > 0
+  // 5. Anomaly Signals & Rules (backed by actual signals from decision or model)
+  const triggeredRules = Array.isArray(decision?.triggered_rules) ? decision.triggered_rules : []
+  const topFactors = Array.isArray(decision?.explanation?.top_factors) ? decision.explanation.top_factors : []
+  const decisionSignals = Array.isArray(decision?.signals) ? decision.signals : []
+  const anomalySignal = decisionSignals.find(s => s.category === 'anomaly' || s.category === 'sequence')
+
+  const anomalyText = anomalySignal
+    ? `${anomalySignal.reason} (${Math.round(anomalySignal.severity)}% severity)`
+    : triggeredRules.length > 0
     ? triggeredRules.slice(0, 2).map(r => r.replace(/_/g, ' ')).join(' · ')
-    : topFactors[0] || 'Statistical anomaly score within normal threshold'
-  const isAnomalous = triggeredRules.length > 0 || (trader.anomaly_score != null && trader.anomaly_score > 0.5)
+    : topFactors[0] || 'No material statistical anomaly — within baseline threshold'
+  const isAnomalous = triggeredRules.length > 0 || !!anomalySignal || (trader.anomaly_score != null && trader.anomaly_score > 0.5)
 
   // 6. Continuous Trust Impact
   const currentTrust = Math.round(decision?.trust_score ?? trader.trust_score)
-  const prevTrust = latestTransition ? Math.round(latestTransition.previous_score) : (trader.initial_trust ?? 94)
-  const trustDelta = latestTransition ? Math.round(latestTransition.delta) : (currentTrust - prevTrust)
+  const prevTrust = decision?.previous_score != null
+    ? Math.round(decision.previous_score)
+    : (latestTransition ? Math.round(latestTransition.previous_score) : (trader.initial_trust ?? 94))
+  const trustDelta = Math.round(currentTrust - prevTrust)
 
   // 7. Policy Intervention
   const currentDecision = (decision?.decision || trader.last_decision || 'ALLOW').toUpperCase()
   let enforcementAction = 'Permit action under continuous monitoring'
-  if (currentDecision === 'BLOCK') {
+  if (decision?.enforcement?.reason) {
+    enforcementAction = decision.enforcement.reason
+  } else if (currentDecision === 'BLOCK') {
     enforcementAction = 'Immediate account killswitch engaged'
   } else if (currentDecision === 'RESTRICT') {
     enforcementAction = 'Withdrawal hold activated; capital preserved'
@@ -300,7 +309,7 @@ export function ReasoningEvidenceChain({
           </div>
           <div className="stage-desc">{enforcementAction}</div>
           <div className="stage-footer mono">
-            <span>REC: {decision?.explanation.recommendation ? decision.explanation.recommendation.slice(0, 18) + '...' : 'SOP Standard'}</span>
+            <span>REC: {decision?.explanation?.recommendation ? decision.explanation.recommendation.slice(0, 18) + '...' : 'SOP Standard'}</span>
           </div>
         </div>
       </div>
