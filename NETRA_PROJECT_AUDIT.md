@@ -11,37 +11,38 @@
 
 NETRA is designed as an institutional **Contextual Trader Trust Intelligence Engine** for trading venues (specifically targeted for Mochatrade, a Y Combinator-backed perpetual futures venue allowing Indian retail traders to trade US stocks/derivatives in INR). Its architectural thesis is to shift risk mitigation from rigid, isolated transaction alerts (`event → rule → alert`) to holistic lifecycle intelligence (`events → individual baseline → temporal sequence → entity graph → continuous trust [0–100] → proportional intervention → forensic audit`).
 
-**Current Reality:**
-The project was built as an ambitious, high-polish hackathon prototype. It possesses a complete, visually striking operations console (React 19 + TypeScript + Vite) and a functional FastAPI backend backed by SQLite persistence via SQLAlchemy. The end-to-end telemetry loop (event ingestion → rule scoring → trust degradation → case creation → SSE broadcast → live console update) **actually works**. 
+**Current Architecture & Status (Updated Day 2 — September 10, 2026):**
+The project has evolved through Day 1 and Day 2 from an initial heuristic prototype into an operational **Temporal, Behavioral, and Cryptographic Trust Intelligence System**:
+- **Organic Trust Progression:** The hardcoded flagship bypass (`94 -> 82 -> 61 -> 48 -> 31 -> 14`) has been completely removed. Scores and decisions emerge organically from structured `RiskSignal` generation, anti-double-counting aggregation, and cross-dimensional synergy.
+- **Adaptive Behavioral Baselines:** Replaced static JSON dictionaries with `BaselineEngine` and `AdaptiveTraderProfile`. Tracks running numeric distributions (mean, standard deviation, sample count, min, max), calculates bounded z-scores ($z = (x - \mu)/\sigma$), circadian login hour norms, and enforces baseline poisoning protection (`is_trusted_for_learning`).
+- **Temporal Sliding Windows & Sequences:** Built `TemporalWindowEngine` (rolling velocity across 5m, 15m, 1h, 24h, and 7d horizons + burst surge detection) and `SequenceEngine` (timestamp-aware kill chain matching with elapsed-time tracking).
+- **Operational Action Enforcement:** Built `ActionEnforcementService` evaluating actions (`LOGIN`, `TRADE`, `LEVERAGED_TRADE`, `DEPOSIT`, `WITHDRAWAL`, credential changes) against policy thresholds, current trust, and active case restrictions, returning real `ALLOW`, `MONITOR`, `VERIFY`, `RESTRICT`, and `BLOCK` gateway states.
+- **Tamper-Evident SHA-256 Audit Ledger:** All audit records are cryptographically chained (`previous_hash` + deterministic canonical JSON payload SHA-256 hashing). Built `verify_audit_chain()` and UI verification to detect tampering, deletion, or reordering.
+- **Server-Side Authorization & CORS:** Implemented server-side RBAC dependencies (`require_role`) protecting sensitive administrative and analyst operations (policy mutations, simulation execution, case notes) from spoofing, paired with environment-driven CORS configuration.
+- **Truthful Analytics:** Replaced hardcoded static precision/recall strings (`94.2%` / `91.5%`) with live empirical evaluation against ground-truth threat controls (TP, TN, FP, FN, precision, recall, FPR) and relabeled telemetry as `perf_counter` pipeline execution timing.
 
-However, behind the impressive institutional UI and README claims lies significant architectural simulation:
-- **No AI / ML:** Zero machine learning, generative AI, or statistical models exist. "Bayesian decay", "94.2% precision", and "91.5% recall" are hardcoded heuristic rules and static strings.
-- **No Neo4j or PostgreSQL in Runtime:** Despite `docker-compose.yml` declaring PostgreSQL 16 and Neo4j 5, the backend connects strictly to SQLite (`sqlite:///./netra.db`). Neither `psycopg2` nor `neo4j` drivers are installed in `requirements.txt`.
-- **Hardcoded Flagship Trajectory:** The flagship demo scenario (`Trader #7842`: `94 → 82 → 61 → 48 → 31 → 14`) is produced by hardcoded point-deduction constants (`NEW_DEVICE: 12`, `IP_CHANGE: 21`, `DEPOSIT: 13`, `LEVERAGE_CHANGE: 17`, `WITHDRAWAL: 17`) triggered by a `metadata.flagship = True` flag.
-- **Zero Real Authentication / RBAC:** Role-based access control accepts arbitrary `X-Actor-Role` HTTP headers (`ADMIN`, `RISK_ANALYST`, etc.) supplied directly by the client with no token, session, or signature verification.
-- **Static Baselines:** Trader baselines are hardcoded JSON dictionaries seeded at startup. They do not continuously adapt using moving averages, standard deviations, or statistical learning.
-- **No Cryptographic Audit Integrity:** The "Tamper-Evident Immutable Audit Vault" is a standard mutable SQLite database table without SHA-256 block hashing, hash chaining, or Merkle trees.
+**Honest Limitations & Unimplemented Systems:**
+- **No Neo4j or PostgreSQL in Runtime:** Despite `docker-compose.yml` declaring PostgreSQL 16 and Neo4j 5, the active backend connects strictly to SQLite with WAL mode (`sqlite:///./netra.db`). Schema changes are safely migrated in SQLite.
+- **No Deep ML / LLM Models:** Risk scoring is based on statistical behavioral distributions (z-scores, historical sample quantiles) and deterministic contextual aggregation. No Scikit-learn Isolation Forest, neural networks, or LLMs are active in runtime.
+- **Simulated Action Execution Gateway:** The action enforcement layer is an internal gateway (`ActionEnforcementService`). Real venue webhook/API dispatching to external exchange order books is integration-ready but not connected to live external infrastructure.
 
 ---
 
 ## 2. What This Project Currently Does
 
 1. **Seeds 105 Synthetic Trader Profiles:** Generates 105 traders with initial trust scores (between 61 and 97; Trader #7842 seeded at 94.0) and 22 historical trades each.
-2. **Ingests Events via REST (`POST /api/events`):** Validates 15 event types using Pydantic, calculates risk dimensions, updates in-memory and SQLite state, and broadcasts via Server-Sent Events (`GET /api/stream`).
-3. **Calculates Continuous Trust Score (0–100):** Calculates a weighted risk delta across 10 dimensions (`identity`, `behaviour`, `money`, `device`, `network`, `wallet`, `relationships`, `velocity`, `sequence`, `anomaly`) and deducts points from the trader's prior score.
-4. **Enforces Proportional Decisioning:** Evaluates trust score against sensitivity bands (`ALLOW`, `MONITOR`, `VERIFY`, `RESTRICT`). When sensitive withdrawals drop trust below 20, it outputs `RESTRICT`.
-5. **Automatically Spawns Cases:** Automatically creates an investigation case in the triage queue when a `RESTRICT` decision is reached.
-6. **Step-Up Verification (`POST /api/traders/{id}/step-up`):** Simulates 2FA/biometric step-up, adding +35 points to trust and auto-resolving open cases.
-7. **Simulates Executable Threat Scenarios:** Provides one-click execution of 4 scenarios:
-   - Flagship Account Takeover (`Trader #7842`)
-   - Legitimate Cross-Border Travel (`Trader #7842` in Singapore)
-   - Collusive Fraud Ring (`Traders #7102–#7105`)
-   - Hostile Credential Takeover (`Trader #7842`)
-8. **Renders Institutional Console:** A dark-theme React console with 10 operational views, audio telemetry via the Web Audio API, SVG trust trajectory charts, SVG topology graph, pre-commit policy simulation, and command palette (`Ctrl+K`).
-9. **Pre-Commit Policy Sandbox:** Allows live adjustment of dimensional risk weights and action sensitivity sliders with a simulation endpoint (`POST /api/policy/simulate`) that replays the last 50 historical decisions.
-10. **Logs Audit Trail & Dossiers:** Logs operational transitions into SQLite and exports case dossiers as JSON and CSV.
+2. **Ingests Events via REST (`POST /api/events`):** Validates 15 event types using Pydantic, extracts multi-factor features, updates in-memory and SQLite state, and broadcasts via Server-Sent Events (`GET /api/stream`).
+3. **Calculates Continuous Contextual Trust Score (0–100):** Aggregates risk signals across 10 dimensions (`identity`, `behaviour`, `money`, `device`, `network`, `wallet`, `relationships`, `velocity`, `sequence`, `anomaly`) using sub-additive anti-double-counting and cross-dimensional compounding.
+4. **Calculates Adaptive Baseline Statistics:** Evaluates live amounts and leverage against trader historical distributions using sample-guarded z-scores and circadian activity windows.
+5. **Protects Baselines from Poisoning:** Blocks suspicious, unverified, or high-risk events from polluting the historical learning profile until verified by step-up challenges.
+6. **Analyzes Multi-Horizon Velocity & Sequences:** Tracks rolling event frequencies across 5m, 15m, 1h, 24h, and 7d sliding windows and matches timestamp-ordered kill chains.
+7. **Enforces Operational Action Decisions:** Evaluates simulated venue actions (`LOGIN`, `TRADE`, `LEVERAGED_TRADE`, `DEPOSIT`, `WITHDRAWAL`) returning `ALLOW`, `MONITOR`, `VERIFY`, `RESTRICT`, or `BLOCK`.
+8. **Cryptographically Chains Audit Trail:** Generates SHA-256 hash chains across all audit transitions and provides on-demand verification (`GET /api/audit/verify`) to detect log tampering.
+9. **Automatically Spawns Cases & Step-Up Triage:** Automatically creates cases upon restrictive decisions and auto-resolves them upon successful biometric/2FA verification (`POST /api/traders/{id}/step-up`), safely promoting verified devices into baseline.
+10. **Simulates Executable Threat Scenarios:** Provides one-click execution of Flagship Takeover, Legitimate Cross-Border Travel, Fraud Ring Sweep, and Hostile Credential Takeover with live evidence and explanation.
+11. **Renders High-Density Operations Console:** Dark-theme React 19 console with 10 operational views, audio telemetry, topology graph, pre-commit policy simulator, and command palette (`Ctrl+K`).
+12. **Server-Side Authorization & CORS:** Enforces `ADMIN`, `RISK_ANALYST`, `INVESTIGATOR`, and `VIEWER` roles server-side on privileged REST endpoints.
 
----
 
 ## 3. Architecture
 
@@ -554,6 +555,44 @@ The test suite was executed via `pytest`:
 
 Wait for explicit approval and instruction before beginning Phase 1. When authorized:
 1. Review Phase 1 scope with the user.
-2. Begin by refactoring `engine.py` to eliminate hardcoded flagship point deductions while preserving passing test behavior through genuine heuristic mathematics.
-3. Implement dynamic baseline tracking for each trader.
-4. Update the frontend Overview and Analytics screens to reflect real dynamically computed telemetry.
+5. Update the frontend Overview and Analytics screens to reflect real dynamically computed telemetry.
+
+---
+
+## 25. Day 3 Architecture Addendum: Real Graph Intelligence & Behavioral Anomaly Detection
+
+### 25.1 Real Graph Intelligence (`backend/graph_intelligence.py`)
+- **Multi-Hop Traversal:** Breadth-first graph traversal engine supporting configurable depth (1, 2, 3 hops) with strict visited-set cycle protection.
+- **Configurable Relationship Strength:**
+  - Destination Crypto Wallet (`WITHDREW_TO`): `0.95` (highest coupling).
+  - Hardware Device (`USED_DEVICE`): `0.80` (strong coupling).
+  - IP Address (`LOGGED_FROM`): `0.45` (moderate coupling).
+- **Shortest Path Discovery:** Breadth-first shortest path computation between arbitrary network entities with path depth, nodes, edges, and aggregate path strength.
+- **Algorithmic Connected Components & Suspicious Clusters:** Connected components identified across network topology. Clusters classified as suspicious only when corroborated by shared high-strength infrastructure (devices, wallets) or low trust standings (< 60.0), avoiding naive over-penalization of benign shared IP infrastructure.
+- **Structured Graph Risk Signals:** Generates `SHARED_INFRASTRUCTURE_CLUSTER`, `SHARED_WALLET_CLUSTER`, `SHARED_DEVICE_CLUSTER`, `SHARED_IP_CLUSTER`, `MULTI_HOP_SUSPICIOUS_CONNECTION`, and `COORDINATED_ACTIVITY`.
+
+### 25.2 Real Behavioral Anomaly Detection (`backend/anomaly_model.py`)
+- **Algorithm:** Unsupervised `IsolationForest` (`n_estimators=100`, `contamination=0.05`, `random_state=42`) from `scikit-learn`.
+- **Deterministic 12-Dimensional Feature Vector:**
+  1. `deposit_zscore`: Z-score deviation of deposit amount against baseline.
+  2. `withdrawal_zscore`: Z-score deviation of withdrawal amount against baseline.
+  3. `leverage_zscore`: Z-score deviation of leverage against baseline.
+  4. `trade_size_zscore`: Z-score deviation of trade size against baseline.
+  5. `velocity_1h_ratio`: 1h event velocity relative to baseline per hour.
+  6. `sensitive_actions_1h`: Sensitive action count in 1h window.
+  7. `burst_ratio`: Temporal acceleration ratio from sliding window.
+  8. `device_novelty`: 1.0 if unseen device, 0.0 if known.
+  9. `network_novelty`: 1.0 if datacenter/vpn/unseen IP, 0.0 if known.
+  10. `wallet_novelty`: 1.0 if destination wallet is new, 0.0 if known.
+  11. `circadian_anomaly`: 1.0 if action outside normal login hours, 0.0 if normal.
+  12. `graph_degree`: Connected infrastructure links for the trader.
+- **Training Data Safety:** Only events with verified trust standing (`trust_score >= 70.0`, `ALLOW`/`MONITOR` decisions, non-attack data) enter the training population. Contaminated and blocked events are strictly excluded.
+- **Normalized Anomaly Score (0–100):** Continuous mapping of Isolation Forest `decision_function(X)` via linear boundary projection (`clamp((0.14 - decision_function) / 0.32 * 100, 0, 100)`).
+- **Feature-Level Explainability:** Pinpoints individual metric deviations ($z > 1.2\sigma$) for human-auditable reasoning.
+- **Failure-Safe Operation:** Returns explicit `INSUFFICIENT_DATA` or `FAILED` state without fabricating ML scores or crashing event ingestion.
+
+### 25.3 Trust Engine Integration & Anti-Double-Counting
+- Excised all hardcoded fraud ring checks.
+- Graph and ML signals feed into dimensional risk categories (`relationships`, `behaviour`).
+- Peak severity combination with category weights and sublinear compounding prevents multiple compounding penalties for the same underlying factor.
+- ML strictly informs trust assessment and is prohibited from independently enforcing direct `BLOCK` actions.

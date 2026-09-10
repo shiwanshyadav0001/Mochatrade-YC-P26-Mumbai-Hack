@@ -162,6 +162,8 @@ class AuditModel(Base):
     reason = Column(Text, nullable=False)
     policy_version = Column(String(64), nullable=False)
     details_json = Column(Text, nullable=False, default="{}")
+    previous_hash = Column(String(64), nullable=True)
+    current_hash = Column(String(64), nullable=True)
 
     def to_dict(self):
         return {
@@ -173,6 +175,8 @@ class AuditModel(Base):
             "reason": self.reason,
             "policy_version": self.policy_version,
             "details": json.loads(self.details_json) if self.details_json else {},
+            "previous_hash": self.previous_hash,
+            "current_hash": self.current_hash,
         }
 
 

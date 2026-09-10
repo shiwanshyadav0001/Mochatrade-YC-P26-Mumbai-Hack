@@ -40,3 +40,14 @@ def get_db():
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    if DATABASE_URL.startswith("sqlite"):
+        with engine.connect() as conn:
+            try:
+                res = conn.exec_driver_sql("PRAGMA table_info(audit_log)").fetchall()
+                col_names = [row[1] for row in res]
+                if col_names and "previous_hash" not in col_names:
+                    conn.exec_driver_sql("ALTER TABLE audit_log ADD COLUMN previous_hash VARCHAR(64)")
+                if col_names and "current_hash" not in col_names:
+                    conn.exec_driver_sql("ALTER TABLE audit_log ADD COLUMN current_hash VARCHAR(64)")
+            except Exception:
+                pass

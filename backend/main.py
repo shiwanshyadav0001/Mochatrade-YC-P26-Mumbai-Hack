@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
@@ -11,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from engine import EVENT_TYPES, NetraEngine
+from anomaly_model import BehavioralAnomalyService
 
 engine = NetraEngine()
 subscribers: set[asyncio.Queue[str]] = set()
@@ -98,6 +100,13 @@ class StepUpRequest(BaseModel):
     verification_type: Literal["2FA_BIOMETRIC", "HARDWARE_KEY", "VIDEO_KYC", "SMS_OTP"] = "2FA_BIOMETRIC"
 
 
+class ActionEvaluationInput(BaseModel):
+    trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
+    action: str
+    amount: float | None = Field(default=None, ge=0)
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
 async def broadcast(kind: str, data: Any) -> None:
     message = json.dumps({"type": kind, "data": data})
     stale: list[asyncio.Queue[str]] = []
@@ -122,10 +131,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    cors_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+else:
+    cors_origins = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=cors_origins if os.getenv("ENVIRONMENT") == "production" else ["*"],
+    allow_credentials=True if os.getenv("ENVIRONMENT") == "production" else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -203,6 +223,44 @@ def trader_graph(trader_id: str) -> dict[str, Any]:
     if trader_id not in engine.traders:
         raise HTTPException(404, "Trader not found")
     return engine.trader_graph(trader_id)
+
+
+@app.get("/api/traders/{trader_id}/graph/intelligence")
+def trader_graph_intelligence(trader_id: str) -> dict[str, Any]:
+    if trader_id not in engine.traders:
+        raise HTTPException(404, "Trader not found")
+    return engine.trader_graph_intelligence(trader_id)
+
+
+@app.get("/api/anomaly/status")
+def anomaly_status() -> dict[str, Any]:
+    return engine.anomaly_service.get_status()
+
+
+@app.get("/api/traders/{trader_id}/anomaly")
+def trader_anomaly(trader_id: str) -> dict[str, Any]:
+    if trader_id not in engine.traders:
+        raise HTTPException(404, "Trader not found")
+    result = engine.trader_anomaly_results.get(trader_id)
+    if not result:
+        events = engine.trader_events(trader_id)
+        if events:
+            profile = engine.baseline_profiles.get(trader_id)
+            deg = len([l for l in engine.graph_links if l["source"] == f"TRADER-{trader_id}" or l["target"] == f"TRADER-{trader_id}"])
+            vec, val_map = BehavioralAnomalyService.extract_feature_vector(events[-1], profile, None, graph_degree=deg)
+            result = engine.anomaly_service.predict_anomaly(vec, val_map)
+            engine.trader_anomaly_results[trader_id] = result
+        else:
+            return {
+                "trader_id": trader_id,
+                "anomaly_score": 0.0,
+                "status": "INSUFFICIENT_DATA",
+                "explanation": "No events available for this trader.",
+                "feature_values": {},
+                "top_deviations": [],
+                "model_version": engine.anomaly_service.model_version,
+            }
+    return {"trader_id": trader_id, **result.to_dict()}
 
 
 @app.post("/api/traders/{trader_id}/step-up")
@@ -312,6 +370,35 @@ def case_dossier(case_id: str) -> dict[str, Any]:
 @app.get("/api/audit")
 def audit() -> list[dict[str, Any]]:
     return engine.audit[::-1]
+
+
+@app.get("/api/audit/verify")
+def verify_audit_endpoint(
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST", "INVESTIGATOR", "VIEWER"})),
+) -> dict[str, Any]:
+    return engine.verify_audit_chain()
+
+
+@app.post("/api/actions/evaluate")
+def evaluate_action_endpoint(
+    body: ActionEvaluationInput,
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST", "INVESTIGATOR"})),
+) -> dict[str, Any]:
+    try:
+        context = {**body.context, "amount": body.amount}
+        return engine.evaluate_action(body.trader_id, body.action, context=context)
+    except KeyError:
+        raise HTTPException(404, "Trader not found")
+
+
+@app.get("/api/traders/{trader_id}/baseline")
+def trader_baseline_endpoint(trader_id: str) -> dict[str, Any]:
+    if trader_id not in engine.traders:
+        raise HTTPException(404, "Trader not found")
+    profile = engine.baseline_profiles.get(trader_id)
+    if profile:
+        return profile.to_dict()
+    return engine.traders[trader_id].get("baseline", {})
 
 
 @app.get("/api/policies")
