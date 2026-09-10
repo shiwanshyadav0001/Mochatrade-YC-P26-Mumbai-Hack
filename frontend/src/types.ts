@@ -180,3 +180,38 @@ export type SearchResult = {
   events: { event_id: string; trader_id: string; event_type: string; timestamp: string }[]
   cases: { case_id: string; trader_id: string; status: string; reason: string }[]
 }
+
+export type AuditRecord = {
+  audit_id: string
+  timestamp: string
+  actor: string
+  event: string
+  subject: string
+  reason: string
+  policy_version: string
+  details?: Record<string, any>
+  previous_hash?: string
+  current_hash?: string
+}
+
+export type AuditVerifyResult = {
+  valid: boolean
+  total_records: number
+  checked_records: number
+  genesis_hash: string
+  latest_hash: string
+  first_invalid_record?: Record<string, any>
+  reason?: string
+}
+
+export type ActionEvaluationResult = {
+  trader_id: string
+  action: string
+  decision: string
+  allowed: boolean
+  trust_score: number
+  reason: string
+  policy_version: string
+  evidence: any[]
+  restriction_status?: string
+}

@@ -95,3 +95,86 @@ def test_post_event_returns_500_for_database_failure(monkeypatch):
 
     assert error.value.status_code == 500
     assert error.value.detail == "Database write failed"
+
+
+def test_action_evaluate_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    body = main.ActionEvaluationInput(trader_id="7842", action="WITHDRAWAL", amount=5000)
+    res = main.evaluate_action_endpoint(body, {"actor_id": "analyst-01", "role": "RISK_ANALYST"})
+    assert res["trader_id"] == "7842"
+    assert res["action"] == "WITHDRAWAL"
+    assert res["decision"] in {"ALLOW", "MONITOR", "VERIFY", "RESTRICT", "BLOCK"}
+    assert "status" in res
+
+
+def test_audit_verify_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    res = main.verify_audit_endpoint({"actor_id": "viewer-01", "role": "VIEWER"})
+    assert res["valid"] is True
+    assert "checked_records" in res
+
+
+def test_trader_baseline_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    res = main.trader_baseline_endpoint("7842")
+    assert "deposit_amount" in res
+    assert "countries" in res
+
+
+def test_rbac_viewer_denied_modifications():
+    viewer_actor = {"actor_id": "viewer-01", "role": "VIEWER"}
+    checker = main.require_role({"ADMIN", "RISK_ANALYST"})
+
+    with pytest.raises(HTTPException) as err:
+        checker(viewer_actor)
+    assert err.value.status_code == 403
+    assert "Access denied" in err.value.detail
+
+
+def test_rbac_admin_allowed_policy_update():
+    admin_actor = {"actor_id": "admin-01", "role": "ADMIN"}
+    checker = main.require_role({"ADMIN"})
+    res = checker(admin_actor)
+    assert res["role"] == "ADMIN"
+
+
+def test_graph_intelligence_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    res = main.trader_graph_intelligence("7842")
+    assert res["trader_id"] == "7842"
+    assert "traversal" in res
+    assert "nodes" in res["traversal"]
+    assert "relationship_strengths" in res
+
+
+def test_anomaly_status_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    res = main.anomaly_status()
+    assert "model_available" in res
+    assert "status" in res
+    assert "algorithm" in res
+    assert "feature_count" in res
+    assert res["feature_count"] == 12
+
+
+def test_trader_anomaly_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    res = main.trader_anomaly("7842")
+    assert res["trader_id"] == "7842"
+    assert "anomaly_score" in res
+    assert 0.0 <= res["anomaly_score"] <= 100.0
+    assert "status" in res
+    assert "model_version" in res
+
