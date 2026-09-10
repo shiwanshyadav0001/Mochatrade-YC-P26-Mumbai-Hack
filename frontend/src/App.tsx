@@ -6,6 +6,7 @@ import { EvidenceDrawer } from './components/EvidenceDrawer'
 import { InteractiveGraph } from './components/InteractiveGraph'
 import { PolicySandbox } from './components/PolicySandbox'
 import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
+import { ScenarioAttackReplay } from './components/ScenarioAttackReplay'
 import { TrustTrajectoryHero } from './components/TrustTrajectoryHero'
 import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, Policy, RiskEventItem, Trader, UserRole } from './types'
 
@@ -2137,148 +2138,23 @@ export default function App() {
 
           {/* VIEW: SIMULATOR */}
           {view === 'SIMULATOR' && (
-            <div className="grid-12">
-              <div className="col-12">
-                <div className="panel">
-                  <div className="panel-header">
-                    <h3>Executable Attack Vector Test Lab</h3>
-                    <span className="panel-meta">DIRECT INGESTION INTO ACTIVE RISK OS</span>
-                  </div>
-
-                  <div className="table-container">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>CODE</th>
-                          <th>SCENARIO IDENTIFIER</th>
-                          <th>EVENT PROGRESSION & VECTOR</th>
-                          <th>EXPECTED SEVERITY</th>
-                          <th>EXECUTION CONTROLS</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          {
-                            code: 'FLAGSHIP',
-                            title: 'Rapid Suspicious Withdrawal Attack',
-                            desc: 'NEW_DEVICE → IP_CHANGE (Datacenter) → $25k Abnormal Deposit → 50× Leverage → Fresh Wallet Withdrawal',
-                            tag: 'CRITICAL',
-                          },
-                          {
-                            code: 'TRAVEL',
-                            title: 'Legitimate Cross-Border Travel',
-                            desc: 'LOGIN (Singapore) → Normal Deposit ($2,800) → Normal Leverage (3×). Engine verifies context and does NOT block.',
-                            tag: 'GUARDED',
-                          },
-                          {
-                            code: 'FRAUD_RING',
-                            title: 'Collusive Multi-Account Ring Sweep',
-                            desc: '4 distinct trader accounts simultaneously sharing hardware identifiers, datacenter proxy subnets, and destination wallets.',
-                            tag: 'HIGH',
-                          },
-                          {
-                            code: 'TAKEOVER',
-                            title: 'Hostile Account Takeover Surge',
-                            desc: 'NEW_DEVICE followed by rapid PASSWORD_CHANGE, 2FA_CHANGE, and API_KEY_CHANGE rotations.',
-                            tag: 'ELEVATED',
-                          },
-                        ].map(sc => (
-                          <tr key={sc.code}>
-                            <td className="mono"><b>{sc.code}</b></td>
-                            <td><b>{sc.title}</b></td>
-                            <td style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{sc.desc}</td>
-                            <td><StatusBadge value={sc.tag} /></td>
-                            <td>
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <button
-                                  className="btn btn-primary"
-                                  disabled={running === sc.code}
-                                  onClick={() => runScenario(sc.code, 'NORMAL')}
-                                >
-                                  {running === sc.code ? 'RUNNING...' : 'EXECUTE'}
-                                </button>
-                                <button
-                                  className="btn btn-secondary"
-                                  disabled={running === sc.code}
-                                  onClick={() => stepScenario(sc.code)}
-                                  title="Step single event forward"
-                                >
-                                  STEP
-                                </button>
-                                <button
-                                  className="btn btn-secondary"
-                                  disabled={running === sc.code}
-                                  onClick={() => runScenario(sc.code, 'FAST')}
-                                >
-                                  FAST
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Sequence Rules Inspector */}
-                <div className="panel" style={{ marginTop: 12 }}>
-                  <div className="panel-header">
-                    <h3>Configured Sequence Rules</h3>
-                    <span className="panel-meta">TEMPORAL MULTI-EVENT CORRELATION</span>
-                  </div>
-                  <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {[
-                      {
-                        id: 'SEQ-RAPID-WITHDRAWAL',
-                        name: 'Rapid Suspicious Withdrawal',
-                        pattern: 'NEW_DEVICE → IP_CHANGE → DEPOSIT → LEVERAGE_CHANGE → WITHDRAWAL',
-                        max: '30 min',
-                        action: 'RESTRICT WITHDRAWAL',
-                      },
-                      {
-                        id: 'SEQ-CREDENTIAL-TAKEOVER',
-                        name: 'Account Takeover Surge',
-                        pattern: 'NEW_DEVICE → PASSWORD_CHANGE → 2FA_CHANGE → API_KEY_CHANGE',
-                        max: '15 min',
-                        action: 'STEP-UP BIOMETRIC',
-                      },
-                      {
-                        id: 'SEQ-FLASH-COLLUSION',
-                        name: 'Multi-Account Infrastructure Reuse',
-                        pattern: 'DEVICE_CHANGE → IP_CHANGE → WITHDRAWAL (Cross-Account)',
-                        max: '60 min',
-                        action: 'RING HOLD',
-                      },
-                    ].map(seq => (
-                      <div
-                        key={seq.id}
-                        style={{
-                          background: 'var(--bg-surface-0)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 3,
-                          padding: '8px 12px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <strong className="mono" style={{ fontSize: 11 }}>{seq.id}</strong>
-                            <span style={{ fontSize: 11, color: '#fff' }}>{seq.name}</span>
-                          </div>
-                          <div className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>
-                            PATTERN: {seq.pattern} [MAX: {seq.max}]
-                          </div>
-                        </div>
-                        <StatusBadge value={seq.action} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ScenarioAttackReplay
+              trader={selected}
+              allTraders={traders}
+              decisions={decisions}
+              latestDecision={latestDecision}
+              events={events}
+              graph={graph}
+              onInspectEvidence={(d, ev, t) => {
+                setDrawerData({ decision: d, event: ev, trader: t })
+                setDrawerOpen(true)
+              }}
+              onInspectTrader={inspectTrader}
+              onNavigate={setView}
+              onStepUpVerify={stepUpVerify}
+              onCreateCase={createCase}
+              onRefreshAll={refreshAll}
+            />
           )}
 
           {/* VIEW: AUDIT */}

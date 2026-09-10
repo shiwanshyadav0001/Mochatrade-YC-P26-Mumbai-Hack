@@ -2043,6 +2043,306 @@ button:disabled {
 }
 
 /* ==========================================================================
+   NETRA Slice 2 — Scenario Lab / Interactive Attack Replay Stepper
+   ========================================================================== */
+
+.scenario-lab-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scenario-selector-ribbon {
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  box-shadow: var(--shadow-panel);
+}
+
+.scenario-tab-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.scenario-tab-btn {
+  padding: 5px 11px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 120ms ease;
+}
+
+.scenario-tab-btn:hover {
+  background: var(--bg-surface-3);
+  color: #fff;
+  border-color: var(--border-medium);
+}
+
+.scenario-tab-btn.active {
+  border-color: var(--accent-cobalt);
+  background: rgba(37, 99, 235, 0.16);
+  color: #60a5fa;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.25);
+}
+
+.scenario-narrative-banner {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.7) 100%);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.narrative-headline {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.narrative-summary {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+  max-width: 820px;
+  line-height: 1.4;
+}
+
+/* Stepper Track & Nodes */
+.attack-stepper-card {
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  box-shadow: var(--shadow-panel);
+}
+
+.stepper-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.stepper-track {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.stepper-node {
+  background: var(--bg-surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  cursor: pointer;
+  transition: all 140ms ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 110px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stepper-node:hover {
+  border-color: var(--border-medium);
+  background: var(--bg-surface-2);
+}
+
+.stepper-node.node-completed {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.stepper-node.node-active {
+  border-color: var(--accent-cobalt);
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 14px rgba(37, 99, 235, 0.28);
+}
+
+.stepper-node.node-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent-cobalt);
+}
+
+.stepper-node.node-pending {
+  opacity: 0.65;
+  border-style: dashed;
+}
+
+.node-step-index {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-dim);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.node-event-type {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 4px;
+}
+
+.node-telemetry {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-trust-badge {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* Playback Control Bar */
+.stepper-control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 8px 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.control-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ctrl-btn {
+  padding: 5px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-medium);
+  background: var(--bg-surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 120ms ease;
+}
+
+.ctrl-btn:hover:not(:disabled) {
+  background: var(--bg-surface-3);
+  color: #fff;
+  border-color: var(--accent-cobalt);
+}
+
+.ctrl-btn.ctrl-play {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: var(--accent-cobalt);
+  color: #60a5fa;
+}
+
+.ctrl-btn.ctrl-play:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.35);
+  color: #fff;
+}
+
+.ctrl-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.step-indicator-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Replay Active Step Dossier */
+.replay-step-dossier {
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-panel);
+}
+
+.dossier-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.dossier-cell {
+  background: var(--bg-surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 8px 10px;
+}
+
+.dossier-cell-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dossier-cell-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  margin-top: 3px;
+}
+
+/* ==========================================================================
    Responsive Breakpoints
    ========================================================================== */
 
