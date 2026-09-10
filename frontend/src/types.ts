@@ -22,6 +22,8 @@ export type Decision = {
   decision_id: string
   timestamp: string
   event_id?: string
+  audit_id?: string
+  audit_hash?: string
   trader_id: string
   action: string
   decision: string
@@ -78,6 +80,8 @@ export type Event = {
   source: string
   risk_relevance: string
   metadata?: Record<string, any>
+  audit_id?: string
+  audit_hash?: string
 }
 
 export type Trader = {

@@ -139,6 +139,21 @@ export default function App() {
 
   const [caseNoteInputs, setCaseNoteInputs] = useState<Record<string, string>>({})
   const [auditFilterSubject, setAuditFilterSubject] = useState<string>('')
+  const [auditFocusId, setAuditFocusId] = useState<string>('')
+
+  const handleNavigateToAudit = useCallback((auditId?: string, subject?: string) => {
+    if (auditId) setAuditFocusId(auditId)
+    if (subject) setAuditFilterSubject(subject)
+    setView('AUDIT')
+  }, [])
+
+  const handleNavigateToEvent = useCallback((eventId: string, traderId: string) => {
+    if (traderId) {
+      setSelectedId(traderId)
+      selectedIdRef.current = traderId
+    }
+    setView('LIVE MONITOR')
+  }, [])
 
   const refreshSelected = useCallback(async (id?: string) => {
     const targetId = id || selectedIdRef.current
@@ -1202,6 +1217,7 @@ export default function App() {
               onEvaluateAction={evaluateAction}
               evaluatingAction={evaluatingAction}
               actionEvalResult={actionEvalResult}
+              onNavigateToAudit={handleNavigateToAudit}
             />
           )}
 
@@ -1917,6 +1933,8 @@ export default function App() {
               onVerifyChain={verifyAuditChain}
               onExportCSV={exportAuditCSV}
               initialFilterSubject={auditFilterSubject}
+              initialAuditId={auditFocusId}
+              onNavigateToEvent={handleNavigateToEvent}
             />
           )}
 
@@ -2157,6 +2175,7 @@ export default function App() {
         data={drawerData}
         onStepUpVerify={stepUpVerify}
         onOpenTrader={goTrader}
+        onNavigateToAudit={handleNavigateToAudit}
       />
     </div>
   )

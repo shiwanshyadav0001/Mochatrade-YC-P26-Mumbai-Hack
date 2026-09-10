@@ -30,6 +30,7 @@ interface LiveTelemetryMonitorProps {
   onEvaluateAction?: (action: string) => void
   evaluatingAction?: boolean
   actionEvalResult?: ActionEvaluationResult | null
+  onNavigateToAudit?: (auditId?: string, subject?: string) => void
 }
 
 const formatTime = (value?: string) =>
@@ -237,6 +238,7 @@ export function LiveTelemetryMonitor({
   onEvaluateAction,
   evaluatingAction,
   actionEvalResult,
+  onNavigateToAudit,
 }: LiveTelemetryMonitorProps) {
   // Local Filtering and Scoping State
   const [scope, setScope] = useState<'FLEET' | 'FOCUSED'>('FLEET')
@@ -342,15 +344,24 @@ export function LiveTelemetryMonitor({
     return traderMap.get(focusedEvent.trader_id) || (focusedEvent.trader_id === selected?.trader_id ? selected : undefined)
   }, [focusedEvent, traderMap, selected])
 
-  // Active decision for focused event
-  const focusedDecision = useMemo(() => {
-    if (!focusedEvent) return latestDecision
+  // Exact decision resolved specifically for focused event
+  const exactDecision = useMemo(() => {
+    if (!focusedEvent) return undefined
     return (
       decisionMap.get(focusedEvent.event_id) ||
-      decisions.find(d => d.event_id === focusedEvent.event_id || (d.trader_id === focusedEvent.trader_id && d.timestamp === focusedEvent.timestamp)) ||
-      (focusedEvent.trader_id === selectedId ? latestDecision : undefined)
+      decisions.find(d => d.event_id === focusedEvent.event_id || (d.trader_id === focusedEvent.trader_id && d.timestamp === focusedEvent.timestamp))
     )
-  }, [focusedEvent, decisionMap, decisions, selectedId, latestDecision])
+  }, [focusedEvent, decisionMap, decisions])
+
+  const hasExactDecision = Boolean(exactDecision)
+
+  // Active decision for focused event context
+  // When an event has no event-specific decision, we preserve trader context without misleading the operator
+  const focusedDecision = useMemo(() => {
+    if (exactDecision) return exactDecision
+    if (!focusedEvent) return latestDecision
+    return focusedEvent.trader_id === selectedId ? latestDecision : undefined
+  }, [exactDecision, focusedEvent, selectedId, latestDecision])
 
   // Active baseline analysis for focused event
   const focusedBaselineAnalysis = useMemo(() => {
@@ -1109,7 +1120,19 @@ export function LiveTelemetryMonitor({
               </div>
             </div>
 
-            {/* 5-Step Operational Intelligence Loop */}
+            {/* Truthful Fallback Provenance Banner */}
+            {!hasExactDecision && (
+              <div style={{ margin: '8px 12px 2px', padding: '6px 10px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>
+                  ℹ NO EVENT-SPECIFIC DECISION // TELEMETRY CONFORMS TO BASELINE WITHOUT ACTIVE INTERVENTION
+                </span>
+                <span className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)' }}>
+                  DISPLAYING TRADER STANDING
+                </span>
+              </div>
+            )}
+
+            {/* 6-Step Operational Intelligence Loop */}
             <div className="op-loop-stepper">
               {/* STEP 1: EVENT (OBSERVED TELEMETRY) */}
               <div className="op-loop-step">
@@ -1347,6 +1370,36 @@ export function LiveTelemetryMonitor({
                   )}
                 </div>
               </div>
+
+              {/* STEP 6: CRYPTOGRAPHIC AUDIT PROVENANCE */}
+              <div className="op-loop-step">
+                <div className="op-loop-step-head">
+                  <span style={{ color: 'var(--accent-cyan)' }}>06 · AUDIT PROVENANCE</span>
+                  <span className="mono" style={{ color: (exactDecision?.audit_id || focusedEvent.audit_id) ? 'var(--state-normal)' : 'var(--text-dim)' }}>
+                    {(exactDecision?.audit_id || focusedEvent.audit_id) ? '✓ VERIFIED SHA-256' : 'NOT AVAILABLE'}
+                  </span>
+                </div>
+                <div className="op-loop-step-body">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="mono" style={{ fontSize: 10, color: '#fff', fontWeight: 600 }}>
+                      RECORD: {exactDecision?.audit_id || focusedEvent.audit_id || 'NO RECORD LINKED (PRE-LEDGER)'}
+                    </span>
+                    {(exactDecision?.audit_id || focusedEvent.audit_id) && onNavigateToAudit && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 9, padding: '2px 8px', color: 'var(--accent-cyan)' }}
+                        onClick={() => onNavigateToAudit(exactDecision?.audit_id || focusedEvent.audit_id, focusedTrader?.trader_id)}
+                        title="View exact record in Cryptographic Audit Vault"
+                      >
+                        VIEW IN AUDIT VAULT →
+                      </button>
+                    )}
+                  </div>
+                  <div className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)', marginTop: 3, wordBreak: 'break-all' }}>
+                    HASH: {exactDecision?.audit_hash || focusedEvent.audit_hash || 'Historical telemetry preceding write-ahead cryptographic ledger'}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Quick Action Sensitivity Testing on Focused Trader */}
@@ -1449,6 +1502,7 @@ export function LiveTelemetryMonitor({
             graph={graph}
             onInspectEvidence={() => (focusedDecision || latestDecision) && onInspectDecision(focusedDecision || latestDecision!)}
             onOpenTopology={() => onNavigateView('RELATIONSHIP GRAPH')}
+            onNavigateToAudit={onNavigateToAudit}
           />
         </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { AuditRecord, AuditVerifyResult } from '../types'
 
 interface CryptographicAuditVaultProps {
@@ -8,6 +8,8 @@ interface CryptographicAuditVaultProps {
   onVerifyChain: () => Promise<void>
   onExportCSV: () => void
   initialFilterSubject?: string
+  initialAuditId?: string
+  onNavigateToEvent?: (eventId: string, traderId: string) => void
 }
 
 // Helper to canonicalize a record matching Python's canonicalize_record()
@@ -46,14 +48,37 @@ export const CryptographicAuditVault: React.FC<CryptographicAuditVaultProps> = (
   onVerifyChain,
   onExportCSV,
   initialFilterSubject,
+  initialAuditId,
+  onNavigateToEvent,
 }) => {
   const [selectedRecord, setSelectedRecord] = useState<AuditRecord | null>(() => {
+    if (initialAuditId) {
+      const matched = audit.find(a => a.audit_id === initialAuditId)
+      if (matched) return matched
+    }
     return audit.length > 0 ? audit[0] : null
   })
   const [subjectFilter, setSubjectFilter] = useState<string>(initialFilterSubject || '')
   const [actorFilter, setActorFilter] = useState<string>('ALL')
   const [eventFilter, setEventFilter] = useState<string>('ALL')
-  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [searchQuery, setSearchQuery] = useState<string>(initialAuditId || '')
+
+  // Sync with deep-link triggers from other surfaces
+  useEffect(() => {
+    if (initialFilterSubject) {
+      setSubjectFilter(initialFilterSubject)
+    }
+  }, [initialFilterSubject])
+
+  useEffect(() => {
+    if (initialAuditId) {
+      setSearchQuery(initialAuditId)
+      const matched = audit.find(a => a.audit_id === initialAuditId)
+      if (matched) {
+        setSelectedRecord(matched)
+      }
+    }
+  }, [initialAuditId, audit])
 
   // Tamper Sandbox State
   const [tamperMode, setTamperMode] = useState<boolean>(false)
@@ -450,6 +475,36 @@ export const CryptographicAuditVault: React.FC<CryptographicAuditVaultProps> = (
                     </p>
                   </div>
                 </div>
+
+                {/* Originating Event / Decision Forensic Deep-Links */}
+                {selectedRecord.details && (selectedRecord.details.event_id || selectedRecord.details.decision_id) && (
+                  <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg-surface-2)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-subtle)' }}>
+                    <div className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 6 }}>
+                      FORENSIC PROVENANCE LINKAGE
+                    </div>
+                    {selectedRecord.details.event_id && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <span className="mono" style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                          ORIGIN EVENT: <b style={{ color: '#fff' }}>{selectedRecord.details.event_id}</b>
+                        </span>
+                        {onNavigateToEvent && (
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: 9, padding: '2px 8px' }}
+                            onClick={() => onNavigateToEvent(selectedRecord.details!.event_id, selectedRecord.subject)}
+                          >
+                            JUMP TO EVENT →
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {selectedRecord.details.decision_id && (
+                      <div className="mono" style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                        BOUND DECISION: <b style={{ color: 'var(--state-elevated)' }}>{selectedRecord.details.decision_id}</b>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Record Details Metadata */}
                 {selectedRecord.details && Object.keys(selectedRecord.details).length > 0 && (

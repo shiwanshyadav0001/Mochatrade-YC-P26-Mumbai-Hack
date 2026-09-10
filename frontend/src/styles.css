@@ -1661,6 +1661,14 @@ button:disabled {
   align-items: stretch;
   gap: 4px;
 }
+.reasoning-stages-grid-9 {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(110px, 1fr));
+  align-items: stretch;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
 .causal-stage-box {
   background: var(--bg-surface-0);
   border: 1px solid var(--border-subtle);
@@ -1701,6 +1709,10 @@ button:disabled {
 .stage-policy.verify::before { background: var(--state-elevated); }
 .stage-policy.restrict::before { background: var(--state-high); }
 .stage-policy.block::before { background: var(--state-critical); }
+.stage-action.allowed::before { background: var(--state-normal); }
+.stage-action.blocked::before { background: var(--state-critical); }
+.stage-audit.verified::before { background: var(--accent-cyan); }
+.stage-audit.unavailable::before { background: var(--border-subtle); }
 
 .stage-top {
   display: flex;

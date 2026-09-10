@@ -297,4 +297,44 @@ Perform end-to-end forensic reconciliation of documentation against active sourc
 - **Frontend Production Build:** `npm run build` completed in 131ms with 0 errors.
 - **Git State:** Preserved current development tree without destructive resets or rollbacks.
 
+---
+
+## Milestone 4.1: Unified Causal Provenance & Forensic Deep-Link Engine (September 11, 2026)
+
+### Objective
+Establish the foundational forensic provenance layer connecting every live operational decision and ingested telemetry event directly to its underlying baseline metrics, topology cluster, policy rule, action enforcement result, and exact cryptographic SHA-256 audit record.
+
+### Key Architectural Changes
+1. **Authoritative Event-Decision-Audit Cryptographic Linkage (`backend/models.py`, `backend/engine.py`, `backend/database.py`):**
+   - Added `event_id`, `audit_id`, and `audit_hash` columns and dictionary serialization to `DecisionModel`.
+   - Added `audit_id` and `audit_hash` to `EventModel` and `EventRecord`.
+   - Added safe SQLite migration in `database.py:init_db()` using `PRAGMA table_info` and `ALTER TABLE ADD COLUMN` so existing deployments upgrade with zero data loss.
+   - In `backend/engine.py:ingest()` and `_persist_event_and_decision()`, directly bound the generated SHA-256 chained audit record (`audit_id`, `current_hash`) to the decision record and event record both in-memory and in SQLite.
+2. **Truthful Event-to-Decision Fallback Contract (`frontend/src/components/LiveTelemetryMonitor.tsx`):**
+   - Strict resolution of decision belonging to the selected event (`exactDecision`).
+   - If an event has no specific decision (e.g. routine passive telemetry logged under baseline norms), the UI explicitly displays: `"NO EVENT-SPECIFIC DECISION // TELEMETRY CONFORMS TO BASELINE WITHOUT ACTIVE INTERVENTION"` rather than silently misleading the operator with an unrelated decision.
+3. **Forensic Deep-Link Engine Across Surfaces (`frontend/src/App.tsx`, `frontend/src/components/CryptographicAuditVault.tsx`, `frontend/src/components/EvidenceDrawer.tsx`, `frontend/src/components/LiveTelemetryMonitor.tsx`):**
+   - Added bidirectional deep linking:
+     - Live Telemetry Monitor (Step 6) → `VIEW IN AUDIT VAULT →` automatically filters and selects the exact audit block.
+     - Evidence Dossier Drawer (Custody Tab) → displays authentic SHA-256 block hash, record identifier, verification status, and deep-link button.
+     - Cryptographic Audit Vault Block Inspector → displays `ORIGIN EVENT: {event_id}` and `BOUND DECISION: {decision_id}` with `JUMP TO EVENT →` button navigating back to the Live Monitor.
+4. **9-Stage Grounded Causal Reasoning Pipeline (`frontend/src/components/ReasoningEvidenceChain.tsx`, `frontend/src/styles.css`):**
+   - Fully grounded every stage in real data:
+     - `01 EVENT`: Type, amount/asset/network/device payload, timestamp, source.
+     - `02 CONTEXT`: Action sensitivity tier (Critical, High, Medium, Low), hardware device context.
+     - `03 SIGNALS`: Real risk signals & triggered rules from decision, or explicit `"NO MATERIAL SIGNAL DETECTED"`.
+     - `04 BASELINE`: Habitual baseline norms and statistical deviations.
+     - `05 TOPOLOGY`: Graph cluster membership or isolated node confirmation.
+     - `06 TRUST IMPACT`: Prior vs current score with calculated delta.
+     - `07 POLICY`: Proportional policy tier (`ALLOW`, `MONITOR`, `VERIFY`, `RESTRICT`, `BLOCK`) with policy version.
+     - `08 ACTION`: Operational enforcement action description and gate status.
+     - `09 AUDIT`: Cryptographic audit record ID, SHA-256 hash preview, verification status, and direct vault jump.
+5. **Backend API Enhancements (`backend/main.py`):**
+   - Extended `GET /api/decisions` to support optional query parameter filtering by `event_id` and `trader_id`.
+
+### Test Results & Build Verification
+- **Backend Test Suite:** 70 passed out of 70 (`python -m pytest` in 18.76s, including 2 new Milestone 4.1 provenance and database persistence roundtrip tests).
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 121ms with 0 errors.
+- **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
+
 

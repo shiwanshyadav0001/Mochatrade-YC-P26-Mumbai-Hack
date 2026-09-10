@@ -58,6 +58,8 @@ class EventModel(Base):
     wallet_address = Column(String(128), nullable=True, index=True)
     metadata_json = Column(Text, nullable=False, default="{}")
     risk_relevance = Column(String(32), nullable=False, default="medium")
+    audit_id = Column(String(64), nullable=True, index=True)
+    audit_hash = Column(String(64), nullable=True)
 
     def to_dict(self):
         return {
@@ -80,6 +82,8 @@ class EventModel(Base):
             "wallet_address": self.wallet_address,
             "metadata": json.loads(self.metadata_json) if self.metadata_json else {},
             "risk_relevance": self.risk_relevance,
+            "audit_id": self.audit_id,
+            "audit_hash": self.audit_hash,
         }
 
 
@@ -88,6 +92,9 @@ class DecisionModel(Base):
 
     decision_id = Column(String(64), primary_key=True, index=True)
     timestamp = Column(String(64), nullable=False, index=True)
+    event_id = Column(String(64), nullable=True, index=True)
+    audit_id = Column(String(64), nullable=True, index=True)
+    audit_hash = Column(String(64), nullable=True)
     trader_id = Column(String(64), nullable=False, index=True)
     action = Column(String(64), nullable=False)
     decision = Column(String(32), nullable=False)
@@ -103,6 +110,9 @@ class DecisionModel(Base):
         return {
             "decision_id": self.decision_id,
             "timestamp": self.timestamp,
+            "event_id": self.event_id,
+            "audit_id": self.audit_id,
+            "audit_hash": self.audit_hash,
             "trader_id": self.trader_id,
             "action": self.action,
             "decision": self.decision,

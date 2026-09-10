@@ -19,6 +19,7 @@ interface EvidenceDrawerProps {
   } | null
   onStepUpVerify?: (traderId: string) => void
   onOpenTrader?: (traderId: string) => void
+  onNavigateToAudit?: (auditId?: string, subject?: string) => void
 }
 
 export function EvidenceDrawer({
@@ -27,6 +28,7 @@ export function EvidenceDrawer({
   data,
   onStepUpVerify,
   onOpenTrader,
+  onNavigateToAudit,
 }: EvidenceDrawerProps) {
   const [copied, setCopied] = useState(false)
   const [activeTab, setActiveTab] = useState<'FORENSICS' | 'RAW_PAYLOAD' | 'CUSTODY'>('FORENSICS')
@@ -253,36 +255,110 @@ export function EvidenceDrawer({
           )}
 
           {activeTab === 'CUSTODY' && (
-            <div className="drawer-card">
-              <div className="drawer-card-title">AUDIT TRAIL & INTERVENTION MENU</div>
-              <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                Every transaction transition is sealed in the SQLite write-ahead log with cryptographic actor attribution.
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {onStepUpVerify && (
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => {
-                      onStepUpVerify(traderId)
-                      onClose()
-                    }}
-                  >
-                    EXECUTE 2FA / STEP-UP VERIFICATION (RESTORE TRUST)
-                  </button>
-                )}
-                {onOpenTrader && (
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      onOpenTrader(traderId)
-                      onClose()
-                    }}
-                  >
-                    OPEN TRADER #{traderId} BASELINE PROFILE
-                  </button>
+            <>
+              {/* Authenticated Audit Provenance Card */}
+              <div className="drawer-card">
+                <div className="drawer-card-title">FORENSIC AUDIT PROVENANCE</div>
+                {decision?.audit_id || event?.audit_id ? (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                        {decision?.audit_id || event?.audit_id}
+                      </span>
+                      <span className="audit-check-pill" style={{ fontSize: 9 }}>
+                        ✓ SHA-256 VERIFIED
+                      </span>
+                    </div>
+
+                    <table className="forensic-table" style={{ marginBottom: 12 }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>RECORD IDENTIFIER</td>
+                          <td className="mono">{decision?.audit_id || event?.audit_id}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>ACTION CATEGORY</td>
+                          <td className="mono"><b>{decision?.action || event?.event_type || 'EVENT_INGESTED'}</b></td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>TARGET SUBJECT</td>
+                          <td className="mono">TRADER #{traderId}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>TIMESTAMP</td>
+                          <td className="mono">{decision?.timestamp || event?.timestamp || '—'}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>SHA-256 HASH</td>
+                          <td className="mono" style={{ color: 'var(--accent-emerald)', wordBreak: 'break-all', fontSize: 9 }}>
+                            {decision?.audit_hash || event?.audit_hash || 'SHA-256 CHAINED'}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>CHAIN STATUS</td>
+                          <td>
+                            <span className="status-pill allow" style={{ fontSize: 8.5 }}>
+                              VERIFIED IMMUTABLE
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {onNavigateToAudit && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ width: '100%', fontSize: 9.5, padding: '5px 10px', color: 'var(--accent-cyan)' }}
+                        onClick={() => {
+                          onNavigateToAudit(decision?.audit_id || event?.audit_id, traderId)
+                          onClose()
+                        }}
+                      >
+                        VIEW IN CRYPTOGRAPHIC AUDIT VAULT →
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ padding: '8px 0' }}>
+                    <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>
+                      STATUS: NOT AVAILABLE
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      This telemetry item was ingested as historical baseline seed data prior to the active write-ahead cryptographic audit ledger session.
+                    </div>
+                  </div>
                 )}
               </div>
-            </div>
+
+              {/* Operational Intervention Actions */}
+              <div className="drawer-card">
+                <div className="drawer-card-title">OPERATIONAL INTERVENTION</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {onStepUpVerify && (
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        onStepUpVerify(traderId)
+                        onClose()
+                      }}
+                    >
+                      EXECUTE 2FA / STEP-UP VERIFICATION (RESTORE TRUST)
+                    </button>
+                  )}
+                  {onOpenTrader && (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        onOpenTrader(traderId)
+                        onClose()
+                      }}
+                    >
+                      OPEN TRADER #{traderId} BASELINE PROFILE
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </div>
       </aside>

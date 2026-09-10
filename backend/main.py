@@ -302,8 +302,18 @@ def risk_events(
 
 
 @app.get("/api/decisions")
-def decisions(_: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
-    return engine.decisions[::-1]
+def decisions(
+    event_id: str | None = None,
+    trader_id: str | None = None,
+    limit: int = 100,
+    _: dict[str, str] = Depends(get_current_actor),
+) -> list[dict[str, Any]]:
+    rows = engine.decisions[::-1]
+    if event_id:
+        rows = [r for r in rows if r.get("event_id") == event_id]
+    if trader_id:
+        rows = [r for r in rows if r.get("trader_id") == trader_id]
+    return rows[:limit]
 
 
 @app.get("/api/decisions/{decision_id}")

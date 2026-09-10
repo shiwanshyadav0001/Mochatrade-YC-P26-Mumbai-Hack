@@ -93,6 +93,8 @@ class EventRecord:
     phone_hash: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     risk_relevance: str = "medium"
+    audit_id: str | None = None
+    audit_hash: str | None = None
 
     def public(self) -> dict[str, Any]:
         return asdict(self)
@@ -1331,6 +1333,11 @@ class NetraEngine:
                 explanation["summary"],
                 audit_details,
             )
+            # Ensure authoritative audit provenance is bound in-memory
+            decision_record["audit_id"] = audit_record["audit_id"]
+            decision_record["audit_hash"] = audit_record.get("current_hash")
+            event_data["audit_id"] = audit_record["audit_id"]
+            event_data["audit_hash"] = audit_record.get("current_hash")
         except Exception:
             self.traders[trader_id] = snapshot["trader"]
             del self.events[snapshot["events"]:]
@@ -1383,6 +1390,13 @@ class NetraEngine:
         audit_details: dict[str, Any],
     ) -> dict[str, Any]:
         audit_record = self._new_audit_record(actor, "EVENT_INGESTED", trader["trader_id"], reason, audit_details)
+        # Bind cryptographic audit provenance
+        decision_data["audit_id"] = audit_record["audit_id"]
+        decision_data["audit_hash"] = audit_record.get("current_hash")
+        decision_data["event_id"] = event_data.get("event_id")
+        event_data["audit_id"] = audit_record["audit_id"]
+        event_data["audit_hash"] = audit_record.get("current_hash")
+
         try:
             with get_db() as db:
                 t_model = db.query(TraderModel).filter(TraderModel.trader_id == trader["trader_id"]).first()
@@ -1413,12 +1427,17 @@ class NetraEngine:
                     wallet_address=event_data.get("wallet_address"),
                     metadata_json=json.dumps(event_data.get("metadata", {})),
                     risk_relevance=event_data.get("risk_relevance", "medium"),
+                    audit_id=event_data.get("audit_id"),
+                    audit_hash=event_data.get("audit_hash"),
                 )
                 db.add(e_model)
 
                 d_model = DecisionModel(
                     decision_id=decision_data["decision_id"],
                     timestamp=decision_data["timestamp"],
+                    event_id=decision_data.get("event_id"),
+                    audit_id=decision_data.get("audit_id"),
+                    audit_hash=decision_data.get("audit_hash"),
                     trader_id=decision_data["trader_id"],
                     action=decision_data["action"],
                     decision=decision_data["decision"],

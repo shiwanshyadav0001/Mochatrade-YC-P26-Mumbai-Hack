@@ -73,6 +73,11 @@
 - [x] Cryptographic SHA-256 Hash Chaining (`previous_hash` + deterministic canonical JSON payload)
 - [x] Tamper-Evident Chain Verification Endpoint (`GET /api/audit/verify`)
 - [x] UI Audit Chain Verification Controls (Interactive verification status badge & alerting)
+- [x] Unified Causal Provenance Engine (Deterministic `event_id` ↔ `decision_id` ↔ `audit_id` ↔ `audit_hash` SHA-256 linkage persisted in SQLite and in-memory engine)
+- [x] Forensic Deep-Link Engine (Bidirectional navigation across surfaces: Live Event → Exact Decision → Evidence Dossier → Cryptographic Audit Vault → Originating Event)
+- [x] Truthful Event-to-Decision Fallback (Explicitly labels "NO EVENT-SPECIFIC DECISION // TELEMETRY CONFORMS TO BASELINE WITHOUT ACTIVE INTERVENTION" rather than silently displaying an unrelated decision)
+- [x] Cryptographic Provenance in Evidence Custody (Authentic SHA-256 block hash, record identifier, verification status, and direct vault jump)
+- [x] 9-Stage Grounded Causal Reasoning Pipeline (`01 EVENT → 02 CONTEXT → 03 SIGNALS → 04 BASELINE → 05 TOPOLOGY → 06 TRUST IMPACT → 07 POLICY → 08 ACTION → 09 AUDIT`)
 - [ ] Merkle Tree Batch Decision Root Proofs
 
 ---

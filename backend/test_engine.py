@@ -903,5 +903,94 @@ def test_day4_operational_analytics_metrics():
     assert op["graph_clusters_detected"] >= 1
 
 
+# =====================================================================
+# MILESTONE 4.1: UNIFIED CAUSAL PROVENANCE TESTS
+# =====================================================================
+
+def test_causal_provenance_event_decision_audit_linkage():
+    """Milestone 4.1: Ingested events, decisions, and audit records form an immutable causal provenance link."""
+    engine = NetraEngine()
+    engine.reset()
+
+    event_payload = {
+        "event_id": "EV-TEST-PROVENANCE-01",
+        "trader_id": "7001",
+        "event_type": "TRADE",
+        "amount": 2500.0,
+        "asset": "BTC",
+        "leverage": 3,
+        "device_id": "DEV-7001-A",
+        "ip_address": "198.51.100.1",
+        "country": "IN",
+        "city": "Mumbai",
+    }
+
+    result = engine.ingest(event_payload, actor="analyst-auditor")
+
+    dec = result["decision"]
+    ev = result["event"]
+
+    # 1. Event to Decision binding
+    assert dec["event_id"] == "EV-TEST-PROVENANCE-01"
+    assert ev["event_id"] == "EV-TEST-PROVENANCE-01"
+
+    # 2. Cryptographic Audit binding
+    assert dec.get("audit_id") is not None
+    assert dec["audit_id"].startswith("AUD-")
+    assert dec.get("audit_hash") is not None
+    assert len(dec["audit_hash"]) == 64  # SHA-256 hex string
+
+    assert ev.get("audit_id") == dec["audit_id"]
+    assert ev.get("audit_hash") == dec["audit_hash"]
+
+    # 3. Audit ledger verification
+    matching_audit = next((a for a in engine.audit if a["audit_id"] == dec["audit_id"]), None)
+    assert matching_audit is not None
+    assert matching_audit["current_hash"] == dec["audit_hash"]
+    assert matching_audit["actor"] == "analyst-auditor"
+    assert matching_audit["details"]["event_id"] == "EV-TEST-PROVENANCE-01"
+    assert matching_audit["details"]["decision_id"] == dec["decision_id"]
+
+    # 4. Chain verification passes
+    chain_status = engine.verify_audit_chain()
+    assert chain_status["valid"] is True
 
 
+def test_persisted_decision_provenance_roundtrip():
+    """Milestone 4.1: Provenance fields persist in database and deserialize correctly in models."""
+    from database import get_db
+    from models import DecisionModel, EventModel
+
+    engine = NetraEngine()
+    engine.reset()
+
+    ev_id = "EV-TEST-DB-PERSIST-99"
+    result = engine.ingest({
+        "event_id": ev_id,
+        "trader_id": "7002",
+        "event_type": "TRADE",
+        "amount": 1000.0,
+        "asset": "ETH",
+        "device_id": "DEV-7002-TRAVEL",
+        "ip_address": "203.0.113.77",
+    })
+
+    dec_id = result["decision"]["decision_id"]
+    audit_id = result["decision"]["audit_id"]
+
+    with get_db() as db:
+        db_dec = db.query(DecisionModel).filter(DecisionModel.decision_id == dec_id).first()
+        assert db_dec is not None
+        assert db_dec.event_id == ev_id
+        assert db_dec.audit_id == audit_id
+        assert len(db_dec.audit_hash) == 64
+
+        d_dict = db_dec.to_dict()
+        assert d_dict["event_id"] == ev_id
+        assert d_dict["audit_id"] == audit_id
+        assert d_dict["audit_hash"] == db_dec.audit_hash
+
+        db_ev = db.query(EventModel).filter(EventModel.event_id == ev_id).first()
+        assert db_ev is not None
+        assert db_ev.audit_id == audit_id
+        assert db_ev.audit_hash == db_dec.audit_hash
