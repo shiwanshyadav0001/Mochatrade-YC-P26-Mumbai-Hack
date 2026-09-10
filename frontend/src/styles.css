@@ -1780,6 +1780,269 @@ button:disabled {
 }
 
 /* ==========================================================================
+   NETRA Slice 1 — Live Monitor Real-Time Telemetry & Dynamic Focus
+   ========================================================================== */
+
+.live-telemetry-ribbon {
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-panel);
+}
+
+.telemetry-metric-group {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.telemetry-metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.telemetry-metric-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.telemetry-metric-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stream-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.stream-status-dot.dot-live {
+  background: var(--state-normal);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+  animation: sse-pulse 2s infinite ease-in-out;
+}
+
+.stream-status-dot.dot-offline {
+  background: var(--state-critical);
+  box-shadow: 0 0 6px rgba(220, 38, 38, 0.7);
+}
+
+@keyframes sse-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+.focus-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.focus-mode-badge.badge-auto {
+  background: rgba(37, 99, 235, 0.15);
+  border: 1px solid var(--accent-cobalt);
+  color: #60a5fa;
+}
+
+.focus-mode-badge.badge-locked {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid var(--state-elevated);
+  color: #fbbf24;
+}
+
+.focus-mode-toggle-btn {
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-medium);
+  background: var(--bg-surface-2);
+  color: var(--text-secondary);
+  transition: all 120ms ease;
+}
+
+.focus-mode-toggle-btn:hover {
+  background: var(--bg-surface-3);
+  color: #fff;
+  border-color: var(--accent-cobalt);
+}
+
+.dynamic-focus-bar {
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.live-trader-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.live-trader-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.live-trader-chip:hover {
+  background: var(--bg-surface-3);
+  color: #fff;
+  border-color: var(--border-medium);
+}
+
+.live-trader-chip.active {
+  border-color: var(--accent-cobalt);
+  background: rgba(37, 99, 235, 0.16);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.25);
+}
+
+.live-trader-chip.chip-critical {
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
+.live-trader-chip.active.chip-critical {
+  border-color: var(--state-critical);
+  box-shadow: 0 0 8px rgba(220, 38, 38, 0.3);
+}
+
+.priority-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.priority-pill.priority-critical {
+  background: rgba(220, 38, 38, 0.15);
+  border: 1px solid var(--state-critical);
+  color: #f87171;
+}
+
+.priority-pill.priority-high {
+  background: rgba(234, 88, 12, 0.15);
+  border: 1px solid #ea580c;
+  color: #fb923c;
+}
+
+.priority-pill.priority-elevated {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid var(--state-elevated);
+  color: #fcd34d;
+}
+
+.priority-pill.priority-monitor {
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid #0ea5e9;
+  color: #38bdf8;
+}
+
+.priority-pill.priority-normal {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid var(--state-normal);
+  color: #34d399;
+}
+
+.live-event-new-row {
+  animation: live-row-arrival 2.5s ease-out forwards;
+}
+
+@keyframes live-row-arrival {
+  0% {
+    background: rgba(37, 99, 235, 0.24);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.live-focus-card {
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-panel);
+}
+
+.live-focus-header {
+  padding: 10px 14px;
+  background: var(--bg-surface-0);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.live-focus-body {
+  padding: 12px 14px;
+}
+
+.live-focus-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.live-focus-row:last-child {
+  margin-bottom: 0;
+}
+
+/* ==========================================================================
    Responsive Breakpoints
    ========================================================================== */
 

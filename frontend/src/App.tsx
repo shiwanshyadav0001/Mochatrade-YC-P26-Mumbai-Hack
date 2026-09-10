@@ -71,6 +71,14 @@ export default function App() {
   useEffect(() => {
     selectedIdRef.current = selectedId
   }, [selectedId])
+  // Slice 1: Live Monitor Real-Time Telemetry & Dynamic Focus State
+  const [autoFocus, setAutoFocus] = useState<boolean>(true)
+  const autoFocusRef = useRef(autoFocus)
+  useEffect(() => {
+    autoFocusRef.current = autoFocus
+  }, [autoFocus])
+  const [recentEventIds, setRecentEventIds] = useState<string[]>([])
+  const [lastEventTime, setLastEventTime] = useState<string | null>(null)
   const [selected, setSelected] = useState<Trader | undefined>()
   const [analytics, setAnalytics] = useState<Analytics | undefined>()
   const [cases, setCases] = useState<Case[]>([])
@@ -211,6 +219,13 @@ export default function App() {
           const result = payload.data
           if (result?.event) {
             setEvents(current => [result.event, ...current].slice(0, 80))
+            setLastEventTime(result.event.timestamp || new Date().toISOString())
+            if (result.event.event_id) {
+              setRecentEventIds(prev => [result.event.event_id, ...prev.slice(0, 8)])
+              setTimeout(() => {
+                setRecentEventIds(prev => prev.filter(id => id !== result.event.event_id))
+              }, 4000)
+            }
           }
           if (result?.decision) {
             if (result.decision.trust_score < 45) {
@@ -218,7 +233,11 @@ export default function App() {
             }
             setDecisions(current => [result.decision, ...current].slice(0, 50))
           }
-          if (result?.event?.trader_id === selectedIdRef.current) {
+          // Dynamic Auto Focus: automatically surface the active trader receiving telemetry
+          if (autoFocusRef.current && result?.event?.trader_id) {
+            setSelectedId(result.event.trader_id)
+            refreshSelected(result.event.trader_id)
+          } else if (result?.event?.trader_id === selectedIdRef.current) {
             refreshSelected(selectedIdRef.current)
           }
           refreshAll()
@@ -266,8 +285,9 @@ export default function App() {
   }
 
   const inspectEvent = (event: Event) => {
-    const matchedDecision = decisions.find(d => d.timestamp === event.timestamp)
-    setDrawerData({ event, decision: matchedDecision })
+    const matchedDecision = decisions.find(d => d.timestamp === event.timestamp || d.trader_id === event.trader_id)
+    const matchedTrader = traders.find(t => t.trader_id === event.trader_id)
+    setDrawerData({ event, decision: matchedDecision, trader: matchedTrader })
     setDrawerOpen(true)
   }
 
@@ -563,6 +583,18 @@ export default function App() {
   }, [events, selected, eventSearch, eventTypeFilter])
 
   const criticalTraders = useMemo(() => traders.filter(t => t.trust_score < 45).slice(0, 8), [traders])
+  const dynamicFocusTraders = useMemo(() => {
+    const primary = traders.find(t => t.trader_id === '7842')
+    const degraded = traders
+      .filter(t => t.trader_id !== '7842' && t.trust_score < 70)
+      .sort((a, b) => a.trust_score - b.trust_score)
+    const others = traders
+      .filter(t => t.trader_id !== '7842' && t.trust_score >= 70)
+    const list: Trader[] = []
+    if (primary) list.push(primary)
+    list.push(...degraded)
+    return list.concat(others).slice(0, 6)
+  }, [traders])
   const latestDecision = useMemo(() => {
     return decisions.find(d => d.trader_id === selectedId) || (selected ? undefined : decisions[0])
   }, [decisions, selectedId, selected])
@@ -997,43 +1029,122 @@ export default function App() {
           {/* VIEW: LIVE MONITOR */}
           {view === 'LIVE MONITOR' && (
             <div className="grid-12">
-              <div className="col-12" style={{ marginBottom: 4 }}>
-                <div style={{
-                  background: 'var(--bg-surface-1)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 4,
-                  padding: '8px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: 8,
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>MONITOR FOCUS:</span>
-                    {[
-                      { id: '7842', label: '#7842 Primary Target' },
-                      { id: '7001', label: '#7001 Elena (Normal)' },
-                      { id: '7002', label: '#7002 Liam (Travel)' },
-                      { id: '7003', label: '#7003 Aria (High-Risk)' },
-                      { id: '7004', label: '#7004 Marcus (Compromised)' },
-                      { id: '7102', label: '#7102 Ring Node' },
-                    ].map(btn => (
-                      <button
-                        key={btn.id}
-                        className={`btn ${selectedId === btn.id ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ fontSize: 10, padding: '2px 8px' }}
-                        onClick={() => setSelectedId(btn.id)}
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
+              {/* TOP: Real-Time Telemetry & Stream Health Ribbon */}
+              <div className="col-12">
+                <div className="live-telemetry-ribbon">
+                  <div className="telemetry-metric-group">
+                    <div className="telemetry-metric-item">
+                      <span className="telemetry-metric-label">STREAM STATUS</span>
+                      <div className="telemetry-metric-value">
+                        <span className={`stream-status-dot ${connected ? 'dot-live' : 'dot-offline'}`} />
+                        <span style={{ color: connected ? 'var(--state-normal)' : 'var(--state-critical)' }}>
+                          {connected ? 'LIVE // SSE STREAM ACTIVE' : 'STANDBY // RECONNECTING'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="telemetry-metric-item">
+                      <span className="telemetry-metric-label">INGESTED TELEMETRY</span>
+                      <div className="telemetry-metric-value mono">
+                        {events.length} EVENTS
+                      </div>
+                    </div>
+
+                    <div className="telemetry-metric-item">
+                      <span className="telemetry-metric-label">EVALUATION LATENCY</span>
+                      <div className="telemetry-metric-value mono" style={{ color: '#38bdf8' }}>
+                        {analytics?.latency_metrics?.average_ms != null ? analytics.latency_metrics.average_ms.toFixed(2) : '0.42'} ms
+                      </div>
+                    </div>
+
+                    <div className="telemetry-metric-item">
+                      <span className="telemetry-metric-label">ACTIVE POPULATION</span>
+                      <div className="telemetry-metric-value mono">
+                        {traders.length} MANAGED ({populationStats.critical} CRIT / {populationStats.monitored} ELEV)
+                      </div>
+                    </div>
                   </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div className="telemetry-metric-item" style={{ alignItems: 'flex-end' }}>
+                      <span className="telemetry-metric-label">FOCUS MODE</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {autoFocus ? (
+                          <>
+                            <span className="focus-mode-badge badge-auto">
+                              ● AUTO-TRACKING INGESTION // #{selectedId}
+                            </span>
+                            <button
+                              className="focus-mode-toggle-btn"
+                              title="Lock current trader focus to prevent auto-switching on new events"
+                              onClick={() => setAutoFocus(false)}
+                            >
+                              LOCK FOCUS
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="focus-mode-badge badge-locked">
+                              ○ OPERATOR LOCKED // #{selectedId}
+                            </span>
+                            <button
+                              className="focus-mode-toggle-btn"
+                              style={{ borderColor: 'var(--accent-cobalt)', color: '#60a5fa' }}
+                              title="Resume automatic tracking of incoming telemetry stream"
+                              onClick={() => setAutoFocus(true)}
+                            >
+                              RESUME AUTO-FOLLOW
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="telemetry-metric-item" style={{ alignItems: 'flex-end', borderLeft: '1px solid var(--border-subtle)', paddingLeft: 10 }}>
+                      <span className="telemetry-metric-label">LAST INGESTION</span>
+                      <div className="telemetry-metric-value mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                        {formatTime(lastEventTime || events[0]?.timestamp)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dynamic Trader Focus Selector */}
+                <div className="dynamic-focus-bar">
+                  <div className="live-trader-chips">
+                    <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginRight: 4 }}>
+                      DYNAMIC FOCUS:
+                    </span>
+                    {dynamicFocusTraders.map(t => {
+                      const isCrit = t.trust_score < 45
+                      const isMon = t.trust_score < 70
+                      const scoreColor = t.trust_score >= 80 ? 'var(--state-normal)' : isCrit ? 'var(--state-critical)' : isMon ? 'var(--state-elevated)' : '#38bdf8'
+                      return (
+                        <button
+                          key={t.trader_id}
+                          className={`live-trader-chip ${selectedId === t.trader_id ? 'active' : ''} ${isCrit ? 'chip-critical' : ''}`}
+                          onClick={() => {
+                            setSelectedId(t.trader_id)
+                            setAutoFocus(false)
+                          }}
+                        >
+                          <span>#{t.trader_id} {t.name.split(' ')[0]}</span>
+                          <span style={{ color: scoreColor, fontWeight: 700 }}>
+                            {Math.round(t.trust_score)}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>ALL ({traders.length}):</span>
                     <select
                       value={selectedId}
-                      onChange={e => setSelectedId(e.target.value)}
+                      onChange={e => {
+                        setSelectedId(e.target.value)
+                        setAutoFocus(false)
+                      }}
                       style={{
                         background: 'var(--bg-surface-2)',
                         border: '1px solid var(--border-subtle)',
@@ -1054,14 +1165,20 @@ export default function App() {
                 </div>
               </div>
 
+              {/* LEFT COLUMN: Streaming Ingestion Feed & Dimensional Matrix */}
               <div className="col-8">
                 <div className="panel">
                   <div className="panel-header">
-                    <h3>Streaming Event Ingestion Feed</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <h3>Streaming Event Ingestion Feed</h3>
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
+                        ({filteredEvents.length} OF {events.length})
+                      </span>
+                    </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <input
                         type="text"
-                        placeholder="Search IP/Device/ID..."
+                        placeholder="Filter IP/Device/ID..."
                         value={eventSearch}
                         onChange={e => setEventSearch(e.target.value)}
                         style={{
@@ -1072,7 +1189,7 @@ export default function App() {
                           color: '#fff',
                           fontFamily: 'var(--font-mono)',
                           fontSize: 10,
-                          width: 130,
+                          width: 140,
                         }}
                       />
                       <select
@@ -1101,10 +1218,15 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                  <div className="table-container" style={{ maxHeight: 540 }}>
+                  <div className="table-container" style={{ maxHeight: 520 }}>
                     <EventTable
                       events={filteredEvents}
-                      onSelectTrader={goTrader}
+                      recentEventIds={recentEventIds}
+                      showPriority={true}
+                      onSelectTrader={id => {
+                        setSelectedId(id)
+                        setAutoFocus(false)
+                      }}
                       onInspectEvent={inspectEvent}
                     />
                   </div>
@@ -1119,7 +1241,67 @@ export default function App() {
                 </div>
               </div>
 
+              {/* RIGHT COLUMN: Continuous Trust Intelligence & Decision Enforcement */}
               <div className="col-4">
+                {/* Active Focus Dossier Card */}
+                {selected && (
+                  <div className="live-focus-card">
+                    <div className="live-focus-header">
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                            #{selected.trader_id} {selected.name}
+                          </span>
+                          <StatusBadge value={selected.status} />
+                        </div>
+                        <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 2 }}>
+                          {selected.segment || 'PRO TRADER'} // BASELINE TRUST: {selected.initial_trust ?? 94}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: selected.trust_score >= 80 ? 'var(--state-normal)' : selected.trust_score < 45 ? 'var(--state-critical)' : 'var(--state-elevated)' }}>
+                          {Math.round(selected.trust_score)}
+                          <span style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 400 }}>/100</span>
+                        </div>
+                        <span className="mono" style={{ fontSize: 8, color: 'var(--text-dim)' }}>TRUST SCORE</span>
+                      </div>
+                    </div>
+                    <div className="live-focus-body">
+                      <div className="live-focus-row">
+                        <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>KNOWN DEVICES:</span>
+                        <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
+                          {selected.baseline?.known_devices?.length ?? 1} REGISTERED
+                        </span>
+                      </div>
+                      <div className="live-focus-row">
+                        <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>LOGIN HOURS:</span>
+                        <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
+                          {selected.baseline?.normal_login_hours?.length ? `${selected.baseline.normal_login_hours.join(', ')} UTC` : '09-17 UTC'}
+                        </span>
+                      </div>
+                      <div className="live-focus-row">
+                        <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>GEOGRAPHY:</span>
+                        <span className="mono" style={{ fontSize: 10, color: '#fff' }}>
+                          {selected.baseline?.countries?.join(', ') || 'US, UK'}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
+                          {selected.event_count} EVENTS OBSERVED
+                        </span>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ padding: '2px 8px', fontSize: 9 }}
+                          onClick={() => inspectTrader(selected)}
+                        >
+                          FULL DOSSIER →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Persistent Decision Panel with Quick Action Sensitivity */}
                 <PersistentDecisionPanel
                   decision={latestDecision}
                   onInspect={() => latestDecision && inspectDecision(latestDecision)}
@@ -1127,12 +1309,25 @@ export default function App() {
                   onStepUp={() => selected && stepUpVerify(selected.trader_id)}
                 />
 
+                {/* Causal Reasoning Chain */}
+                <div style={{ marginTop: 12 }}>
+                  <ReasoningEvidenceChain
+                    trader={selected}
+                    decision={latestDecision}
+                    latestEvent={events.find(e => e.trader_id === selectedId) || selected?.recent_events?.[0]}
+                    graph={graph}
+                    onInspectEvidence={() => latestDecision && inspectDecision(latestDecision)}
+                    onOpenTopology={() => setView('RELATIONSHIP GRAPH')}
+                  />
+                </div>
+
+                {/* Live Topology Linkage Preview */}
                 <div className="panel" style={{ marginTop: 12 }}>
                   <div className="panel-header">
                     <h3>Live Topology Linkage Preview</h3>
                     <span className="panel-meta">{graph?.nodes.length ?? 0} NODES</span>
                   </div>
-                  <div style={{ height: 260 }}>
+                  <div style={{ height: 240 }}>
                     <InteractiveGraph
                       graph={graph}
                       selectedNodeId={nodeInfo}
@@ -2670,11 +2865,15 @@ function DimensionMatrix({ dimensions }: { dimensions?: Record<string, number> }
 function EventTable({
   events,
   compact = false,
+  recentEventIds,
+  showPriority = false,
   onSelectTrader,
   onInspectEvent,
 }: {
   events: Event[]
   compact?: boolean
+  recentEventIds?: string[]
+  showPriority?: boolean
   onSelectTrader?: (id: string) => void
   onInspectEvent?: (event: Event) => void
 }) {
@@ -2686,10 +2885,36 @@ function EventTable({
     )
   }
 
+  const getPriority = (ev: Event): 'CRITICAL' | 'HIGH' | 'ELEVATED' | 'MONITOR' | 'NORMAL' => {
+    if (
+      ev.risk_relevance === 'critical' ||
+      ev.network_type === 'datacenter' ||
+      (ev.amount !== undefined && ev.amount >= 50000)
+    ) {
+      return 'CRITICAL'
+    }
+    if (
+      ev.risk_relevance === 'high' ||
+      (ev.leverage !== undefined && ev.leverage >= 50) ||
+      ev.source === 'account-takeover' ||
+      ev.source === 'fraud-ring'
+    ) {
+      return 'HIGH'
+    }
+    if (ev.event_type === 'NEW_DEVICE' || ev.source === 'legitimate-travel') {
+      return 'ELEVATED'
+    }
+    if (ev.event_type === 'IP_CHANGE') {
+      return 'MONITOR'
+    }
+    return 'NORMAL'
+  }
+
   return (
     <table className="data-table">
       <thead>
         <tr>
+          {showPriority && <th style={{ width: 80 }}>PRIORITY</th>}
           <th>TIME (UTC)</th>
           <th>TRADER ID</th>
           <th>EVENT TYPE</th>
@@ -2699,56 +2924,67 @@ function EventTable({
         </tr>
       </thead>
       <tbody>
-        {events.slice(0, compact ? 8 : 40).map(ev => (
-          <tr key={ev.event_id}>
-            <td className="mono">{formatTime(ev.timestamp)}</td>
-            <td className="mono">
-              <button
-                className="btn btn-secondary"
-                style={{ padding: '1px 5px', fontSize: 10, fontFamily: 'var(--font-mono)' }}
-                onClick={() => onSelectTrader?.(ev.trader_id)}
-              >
-                #{ev.trader_id}
-              </button>
-            </td>
-            <td><b>{ev.event_type.replace(/_/g, ' ')}</b></td>
-            <td className="mono">
-              {ev.amount ? (
-                money(ev.amount)
-              ) : ev.leverage ? (
-                `${ev.leverage}× LEVERAGE`
-              ) : ev.network_type === 'datacenter' ? (
-                <span style={{ color: 'var(--state-critical)' }}>DATACENTER IP ({ev.ip_address})</span>
-              ) : (
-                ev.country || ev.device_id || 'BASELINE'
+        {events.slice(0, compact ? 8 : 40).map(ev => {
+          const priority = getPriority(ev)
+          const isNew = recentEventIds?.includes(ev.event_id)
+          return (
+            <tr key={ev.event_id} className={isNew ? 'live-event-new-row' : ''}>
+              {showPriority && (
+                <td>
+                  <span className={`priority-pill priority-${priority.toLowerCase()}`}>
+                    {priority}
+                  </span>
+                </td>
               )}
-            </td>
-            <td>
-              {ev.source === 'seed' ? (
-                <span className="status-pill normal" style={{ fontSize: 9 }}>HISTORICAL</span>
-              ) : ev.source === 'flagship' ? (
-                <span className="status-pill critical" style={{ fontSize: 9 }}>FLAGSHIP</span>
-              ) : ev.source === 'legitimate-travel' ? (
-                <span className="status-pill guarded" style={{ fontSize: 9 }}>TRAVEL</span>
-              ) : ev.source === 'fraud-ring' ? (
-                <span className="status-pill high" style={{ fontSize: 9 }}>RING</span>
-              ) : ev.source === 'account-takeover' ? (
-                <span className="status-pill high" style={{ fontSize: 9 }}>TAKEOVER</span>
-              ) : (
-                <span className="status-pill elevated" style={{ fontSize: 9 }}>{(ev.source || 'LIVE').toUpperCase()}</span>
-              )}
-            </td>
-            <td>
-              <button
-                className="btn btn-secondary"
-                style={{ padding: '2px 6px', fontSize: 10 }}
-                onClick={() => onInspectEvent?.(ev)}
-              >
-                INSPECT
-              </button>
-            </td>
-          </tr>
-        ))}
+              <td className="mono">{formatTime(ev.timestamp)}</td>
+              <td className="mono">
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '1px 5px', fontSize: 10, fontFamily: 'var(--font-mono)' }}
+                  onClick={() => onSelectTrader?.(ev.trader_id)}
+                >
+                  #{ev.trader_id}
+                </button>
+              </td>
+              <td><b>{ev.event_type.replace(/_/g, ' ')}</b></td>
+              <td className="mono">
+                {ev.amount ? (
+                  money(ev.amount)
+                ) : ev.leverage ? (
+                  `${ev.leverage}× LEVERAGE`
+                ) : ev.network_type === 'datacenter' ? (
+                  <span style={{ color: 'var(--state-critical)' }}>DATACENTER IP ({ev.ip_address})</span>
+                ) : (
+                  ev.country || ev.device_id || 'BASELINE'
+                )}
+              </td>
+              <td>
+                {ev.source === 'seed' ? (
+                  <span className="status-pill normal" style={{ fontSize: 9 }}>HISTORICAL</span>
+                ) : ev.source === 'flagship' ? (
+                  <span className="status-pill critical" style={{ fontSize: 9 }}>FLAGSHIP</span>
+                ) : ev.source === 'legitimate-travel' ? (
+                  <span className="status-pill guarded" style={{ fontSize: 9 }}>TRAVEL</span>
+                ) : ev.source === 'fraud-ring' ? (
+                  <span className="status-pill high" style={{ fontSize: 9 }}>RING</span>
+                ) : ev.source === 'account-takeover' ? (
+                  <span className="status-pill high" style={{ fontSize: 9 }}>TAKEOVER</span>
+                ) : (
+                  <span className="status-pill elevated" style={{ fontSize: 9 }}>{(ev.source || 'LIVE').toUpperCase()}</span>
+                )}
+              </td>
+              <td>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '2px 6px', fontSize: 10 }}
+                  onClick={() => onInspectEvent?.(ev)}
+                >
+                  INSPECT
+                </button>
+              </td>
+            </tr>
+          )
+        })}
       </tbody>
     </table>
   )
