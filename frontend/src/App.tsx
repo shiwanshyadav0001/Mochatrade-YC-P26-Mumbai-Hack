@@ -6,7 +6,7 @@ import { CryptographicAuditVault } from './components/CryptographicAuditVault'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
 import { ForensicCaseWorkbench } from './components/ForensicCaseWorkbench'
 import { InteractiveGraph } from './components/InteractiveGraph'
-import { PolicySandbox } from './components/PolicySandbox'
+import { PolicyMatrixSimulator } from './components/PolicyMatrixSimulator'
 import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
 import { ScenarioAttackReplay } from './components/ScenarioAttackReplay'
 import { TrustTrajectoryHero } from './components/TrustTrajectoryHero'
@@ -2060,10 +2060,17 @@ export default function App() {
 
           {/* VIEW: POLICIES */}
           {view === 'POLICIES' && (
-            <PolicySandbox
+            <PolicyMatrixSimulator
               policy={policy}
               userRole={userRole}
               onSavePolicy={savePolicy}
+              onInspectTrader={inspectTrader}
+              onInspectEvidence={(d, ev, t) => {
+                setDrawerData({ decision: d, event: ev, trader: t })
+                setDrawerOpen(true)
+              }}
+              allTraders={traders}
+              allDecisions={decisions}
             />
           )}
 
