@@ -1,5 +1,10 @@
 # NETRA Project Audit
 
+> [!NOTE] HISTORICAL AUDIT RECORD — PHASE 0
+> This document records the initial forensic baseline audit of NETRA conducted on September 10, 2026.
+> It captures the historical Phase 0 state prior to subsequent engineering passes (which added real HMAC-SHA256 JWT authentication, Scikit-learn Isolation Forest ML, and multi-trader operational intelligence).
+> For canonical platform architecture, active pipeline specifications, and runtime capabilities, refer to README.md and NETRA_FEATURE_INVENTORY.md.
+
 > **Audit Date:** September 10, 2026  
 > **Auditor:** Antigravity AI  
 > **Phase:** Phase 0 — Comprehensive Forensic Read-Only Technical Audit  

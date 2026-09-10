@@ -1,5 +1,9 @@
 # NETRA — DAY 1 IMPLEMENTATION REPORT: Trust Intelligence Foundation
 
+> [!NOTE] HISTORICAL MILESTONE REPORT — DAY 1
+> This document records the Day 1 implementation milestone achieved on September 10, 2026.
+> For current canonical system architecture and the complete 68-test verified platform state, refer to README.md and NETRA_FEATURE_INVENTORY.md.
+
 **Date:** September 10, 2026  
 **Phase:** Day 1 Implementation  
 **Status:** COMPLETED & VERIFIED  
