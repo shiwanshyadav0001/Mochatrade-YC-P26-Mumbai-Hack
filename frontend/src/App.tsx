@@ -3,6 +3,7 @@ import { api, setActorRole } from './api'
 import { soundManager } from './audio'
 import { CommandPalette } from './components/CommandPalette'
 import { CryptographicAuditVault } from './components/CryptographicAuditVault'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
 import { ForensicCaseWorkbench } from './components/ForensicCaseWorkbench'
 import { InteractiveGraph } from './components/InteractiveGraph'
@@ -60,9 +61,10 @@ const money = (value?: number) =>
     ? '—'
     : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
 
-function StatusBadge({ value }: { value: string }) {
-  const norm = value.toLowerCase().replace(/_/g, '-')
-  return <span className={`status-pill ${norm}`}>{value.replace(/_/g, ' ')}</span>
+function StatusBadge({ value }: { value?: string }) {
+  const str = value || 'UNKNOWN'
+  const norm = str.toLowerCase().replace(/_/g, '-')
+  return <span className={`status-pill ${norm}`}>{str.replace(/_/g, ' ')}</span>
 }
 
 export default function App() {
@@ -623,11 +625,15 @@ export default function App() {
 
   const filteredRiskEvents = useMemo(() => {
     return riskEvents.filter(re => {
+      const q = eventSearch.trim().toLowerCase()
       const matchSearch =
-        !eventSearch.trim() ||
-        re.trader_id.includes(eventSearch) ||
-        re.event_type.toLowerCase().includes(eventSearch.toLowerCase()) ||
-        re.signals.some(s => s.reason.toLowerCase().includes(eventSearch.toLowerCase()) || s.feature.toLowerCase().includes(eventSearch.toLowerCase()))
+        !q ||
+        re.trader_id.toLowerCase().includes(q) ||
+        re.event_type.toLowerCase().includes(q) ||
+        (re.reason && re.reason.toLowerCase().includes(q)) ||
+        (re.category && re.category.toLowerCase().includes(q)) ||
+        (re.feature && re.feature.toLowerCase().includes(q)) ||
+        (re.signals && re.signals.some(s => s.reason?.toLowerCase().includes(q) || s.feature?.toLowerCase().includes(q)))
       const matchType = eventTypeFilter === 'ALL' || re.event_type === eventTypeFilter
       return matchSearch && matchType
     })
@@ -721,7 +727,7 @@ export default function App() {
             <span>{connected ? 'ENGINE ONLINE // 100%' : 'DISCONNECTED'}</span>
           </div>
           <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 4 }}>
-            GHOST CODERS // MOCHATRADE
+            BOSCH CODERS // MOCHATRADE YC P26
           </div>
         </div>
       </aside>
@@ -833,6 +839,7 @@ export default function App() {
             </div>
           </div>
 
+          <ErrorBoundary fallbackTitle="NETRA OPERATIONS CONSOLE">
           {/* VIEW: OVERVIEW — EXECUTIVE COMMAND CENTER */}
           {view === 'OVERVIEW' && (
             <>
@@ -1484,69 +1491,82 @@ export default function App() {
                               </td>
                             </tr>
                           ) : (
-                            filteredRiskEvents.map(re => (
-                              <tr key={re.event_id}>
-                                <td className="mono" style={{ fontSize: 10 }}>{formatTime(re.timestamp)}</td>
-                                <td className="mono">
-                                  <b
-                                    style={{ cursor: 'pointer', color: 'var(--accent-cobalt)' }}
-                                    onClick={() => {
-                                      setSelectedId(re.trader_id)
-                                      setView('TRADERS')
-                                    }}
-                                  >
-                                    #{re.trader_id}
-                                  </b>
-                                </td>
-                                <td><span className="mono" style={{ fontSize: 10 }}>{re.event_type}</span></td>
-                                <td className="mono">
-                                  <span style={{
-                                    color: re.contextual_risk >= 70 ? 'var(--state-critical)' : re.contextual_risk >= 40 ? 'var(--state-elevated)' : 'var(--state-guarded)',
-                                    fontWeight: 700,
-                                  }}>
-                                    {re.contextual_risk}/100
-                                  </span>
-                                </td>
-                                <td><StatusBadge value={re.decision} /></td>
-                                <td className="mono"><b>{Math.round(re.trust_after)}/100</b></td>
-                                <td>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                    {re.signals.slice(0, 2).map((s, sIdx) => (
-                                      <div key={sIdx} style={{ fontSize: 10 }}>
-                                        <span className="mono" style={{ color: 'var(--accent-cobalt)', marginRight: 4 }}>
-                                          [{s.category.toUpperCase()}]
+                            filteredRiskEvents.map((re, rIdx) => {
+                              const sev = re.severity ?? re.contextual_risk ?? 0
+                              const dec = re.decision_impact ?? re.decision ?? 'ALLOW'
+                              const postTrust = Math.round(re.resulting_trust ?? re.trust_after ?? 94)
+                              const signalsList = re.signals && re.signals.length > 0
+                                ? re.signals
+                                : re.reason ? [{ category: re.category || 'RISK', reason: re.reason, feature: re.feature || '' }] : []
+                              return (
+                                <tr key={re.risk_id || re.event_id || `risk-${rIdx}`}>
+                                  <td className="mono" style={{ fontSize: 10 }}>{formatTime(re.timestamp)}</td>
+                                  <td className="mono">
+                                    <b
+                                      style={{ cursor: 'pointer', color: 'var(--accent-cobalt)' }}
+                                      onClick={() => {
+                                        setSelectedId(re.trader_id)
+                                        setView('TRADERS')
+                                      }}
+                                    >
+                                      #{re.trader_id}
+                                    </b>
+                                  </td>
+                                  <td><span className="mono" style={{ fontSize: 10 }}>{re.event_type}</span></td>
+                                  <td className="mono">
+                                    <span style={{
+                                      color: sev >= 70 ? 'var(--state-critical)' : sev >= 40 ? 'var(--state-elevated)' : 'var(--state-guarded)',
+                                      fontWeight: 700,
+                                    }}>
+                                      {Math.round(sev)}/100
+                                    </span>
+                                  </td>
+                                  <td><StatusBadge value={dec} /></td>
+                                  <td className="mono"><b>{postTrust}/100</b></td>
+                                  <td>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                      {signalsList.slice(0, 2).map((s, sIdx) => (
+                                        <div key={sIdx} style={{ fontSize: 10 }}>
+                                          <span className="mono" style={{ color: 'var(--accent-cobalt)', marginRight: 4 }}>
+                                            [{(s.category || 'RISK').toUpperCase()}]
+                                          </span>
+                                          <span>{s.reason}</span>
+                                        </div>
+                                      ))}
+                                      {signalsList.length > 2 && (
+                                        <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
+                                          +{signalsList.length - 2} additional signals
                                         </span>
-                                        <span>{s.reason}</span>
-                                      </div>
-                                    ))}
-                                    {re.signals.length > 2 && (
-                                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
-                                        +{re.signals.length - 2} additional signals
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td>
-                                  <button
-                                    className="btn btn-secondary"
-                                    style={{ padding: '2px 6px', fontSize: 10 }}
-                                    onClick={() => {
-                                      setSelectedId(re.trader_id)
-                                      inspectEvent({
-                                        event_id: re.event_id,
-                                        timestamp: re.timestamp,
-                                        trader_id: re.trader_id,
-                                        event_type: re.event_type,
-                                        source: 'risk-events',
-                                        risk_relevance: `${re.contextual_risk}`,
-                                      })
-                                    }}
-                                  >
-                                    INSPECT
-                                  </button>
-                                </td>
-                              </tr>
-                            ))
+                                      )}
+                                      {signalsList.length === 0 && (
+                                        <span className="mono" style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+                                          {re.reason || 'Operational anomaly observed'}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <button
+                                      className="btn btn-secondary"
+                                      style={{ padding: '2px 6px', fontSize: 10 }}
+                                      onClick={() => {
+                                        setSelectedId(re.trader_id)
+                                        inspectEvent({
+                                          event_id: re.event_id || re.risk_id || 'EV-RISK',
+                                          timestamp: re.timestamp,
+                                          trader_id: re.trader_id,
+                                          event_type: re.event_type,
+                                          source: re.source || 'risk-events',
+                                          risk_relevance: `${sev}`,
+                                        })
+                                      }}
+                                    >
+                                      INSPECT
+                                    </button>
+                                  </td>
+                                </tr>
+                              )
+                            })
                           )}
                         </tbody>
                       </table>
@@ -2041,6 +2061,7 @@ export default function App() {
               </div>
             </div>
           )}
+          </ErrorBoundary>
         </div>
       </main>
 

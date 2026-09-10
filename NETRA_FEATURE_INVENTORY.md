@@ -93,6 +93,9 @@
 - [x] Unified Risk Incidents Feed Toggle (`/api/risk-events` vs all events)
 - [x] System-Wide Infrastructure Graph & Detected Cluster Cards View Toggle
 - [x] Dynamic Sequence Trace Visualizer (Driven by trader timeline)
+- [x] UI Error Boundary Shield (Zero black-screen crashes; resilient fallback with error tracing)
+- [x] Dual-Contract Risk Events Grid (Backward-compatible handling of both structured and legacy risk payloads)
+- [x] Interactive Attack Scenario Replay (Dynamic trader name and baseline alignment for Maya Chen and Kavita Reddy)
 
 ---
 
@@ -102,7 +105,16 @@
 - [x] Server-Side Role-Based Authorization (`require_role(...)` enforcement on privileged endpoints)
 - [x] Environment-Driven CORS Security (Configurable `ALLOWED_ORIGINS` with secure localhost fallback)
 - [x] Safe Database Schema Migration (Automated column alteration in `init_db()`)
-- [~] Authentication (Server-enforced role dependencies; JWT / session cookies integration-ready for production)
+- [x] JWT Authentication & Server-Side RBAC (HMAC-SHA256 bearer tokens, PBKDF2-SHA256 credential hashing, role-based route enforcement)
 - [ ] Ingestion API Rate Limiting
 - [ ] PostgreSQL Docker Container Connection (Unconnected; SQLite active)
 - [ ] Neo4j Docker Container Connection (Unconnected; SQLite active)
+
+---
+
+## 7. Project & Attribution Context
+
+- **Platform**: NETRA — Continuous Trader Trust Intelligence Engine
+- **Hackathon Context**: Mochatrade YC P26 Mumbai Hackathon (Target domain: US equity perpetual futures with INR rails)
+- **Engineering Team**: Bosch Coders
+

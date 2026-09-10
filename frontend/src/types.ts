@@ -152,14 +152,25 @@ export type RiskEventSignal = {
 }
 
 export type RiskEventItem = {
+  risk_id?: string
   event_id: string
   trader_id: string
   timestamp: string
   event_type: string
-  signals: RiskEventSignal[]
-  contextual_risk: number
-  decision: string
-  trust_after: number
+  feature?: string
+  category?: string
+  severity?: number
+  reason?: string
+  evidence?: Record<string, any>
+  rule_code?: string
+  decision_impact?: string
+  resulting_trust?: number
+  source?: string
+  // Backward-compatibility aliases
+  signals?: RiskEventSignal[]
+  contextual_risk?: number
+  decision?: string
+  trust_after?: number
 }
 
 export type OperationalMetrics = {

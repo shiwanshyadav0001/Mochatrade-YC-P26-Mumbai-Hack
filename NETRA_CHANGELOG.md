@@ -269,5 +269,32 @@ Recover safely from interrupted state and finish Day 4 Multi-Trader Operational 
 1. SQLite WAL mode provides local persistence; production high-concurrency ingestion (>10k events/sec) will benefit from PostgreSQL / TimescaleDB.
 2. Unsupervised Isolation Forest is a behavioral anomaly detector; production institutional deployment requires supervised threat calibration with historical labeled fraud datasets.
 3. Graph intelligence currently runs an in-memory BFS engine on SQLite graph records; massive graphs (>1M nodes) will require Neo4j / Memgraph graph database engines.
-4. User authentication and JWT / session management is intentionally deferred per project direction for dedicated security group implementation.
+
+---
+
+## Hardening & Forensic Reconciliation Pass (September 11, 2026)
+
+### Objective
+Perform end-to-end forensic reconciliation of documentation against active source code, harden frontend-backend data contracts, eliminate crash hazards, and verify continuous test and build integrity without modifying core algorithms.
+
+### Key Changes & Forensic Findings
+1. **Cryptographic JWT Authentication Hardening (`backend/auth.py`, `backend/test_auth.py`):**
+   - Verified active server-side authentication using HMAC-SHA256 bearer tokens, PBKDF2-SHA256 password hashing (310,000 iterations), token expiration, and role validation via `require_role(...)`.
+   - Updated documentation to reflect active JWT enforcement and removed outdated claims that auth was deferred.
+2. **Dual-Contract Risk Events Resilience (`backend/engine.py`, `frontend/src/App.tsx`, `frontend/src/types.ts`):**
+   - Enriched backend `risk_events` emission to provide both primary fields (`severity`, `reason`, `resulting_trust`, `decision_impact`) and backward-compatible aliases (`contextual_risk`, `trust_after`, `decision`, `signals`).
+   - Hardened `RiskEvents` table rendering in `App.tsx` with defensive optional chaining and fallback empty arrays, resolving the black-screen bug.
+3. **UI Crash Protection (`frontend/src/components/ErrorBoundary.tsx`):**
+   - Added class-based React `ErrorBoundary` wrapping core view components to prevent unexpected unhandled render exceptions from taking down the entire console.
+4. **Scenario Identity Alignment (`frontend/src/components/ScenarioAttackReplay.tsx`):**
+   - Aligned scenario replay display names to match backend ground-truth identities: `#7842` mapped to Maya Chen; `#7102` mapped to Kavita Reddy.
+5. **Documentation & Feature Inventory Reconciliation:**
+   - Updated `README.md` to truthfully reflect the 8-stage intelligence pipeline (including Scikit-Learn Isolation Forest and Action Enforcement Gateway), the complete 14-file backend architecture, and clean separation between NETRA as the platform, Bosch Coders as the engineering team, and Mochatrade YC P26 as the hackathon domain context.
+   - Updated `NETRA_FEATURE_INVENTORY.md` to align every feature item against runtime code evidence using the standard status model.
+
+### Test & Build Verification
+- **Backend Test Suite:** 68 passed out of 68 (`python -m pytest` in 18.10s, 0 failures).
+- **Frontend Production Build:** `npm run build` completed in 131ms with 0 errors.
+- **Git State:** Preserved current development tree without destructive resets or rollbacks.
+
 

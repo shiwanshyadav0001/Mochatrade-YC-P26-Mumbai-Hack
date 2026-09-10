@@ -199,21 +199,28 @@ class NetraEngine:
             explanation = d.get("explanation", {})
             evidence_list = explanation.get("evidence", [])
             for ev in evidence_list:
+                sev_val = float(ev.get("risk", 55.0) if isinstance(ev, dict) else 55.0)
+                reason_val = ev.get("label", "Contextual risk signal") if isinstance(ev, dict) else str(ev)
+                cat_val = "relationships" if "RING" in str(ev.get("id", "")) or "GRAPH" in str(ev.get("type", "")) else "anomaly" if "ANOMALY" in str(ev.get("type", "")) else "identity"
                 self.risk_events.append({
                     "risk_id": f"RISK-{uuid4().hex[:8].upper()}",
                     "event_id": d.get("event_id") or f"EV-{tid}",
                     "trader_id": tid,
                     "event_type": d.get("action", "TRADE"),
                     "feature": ev.get("type", "RISK_SIGNAL").lower(),
-                    "category": "relationships" if "RING" in str(ev.get("id", "")) or "GRAPH" in str(ev.get("type", "")) else "anomaly" if "ANOMALY" in str(ev.get("type", "")) else "identity",
-                    "severity": float(ev.get("risk", 55.0) if isinstance(ev, dict) else 55.0),
-                    "reason": ev.get("label", "Contextual risk signal") if isinstance(ev, dict) else str(ev),
+                    "category": cat_val,
+                    "severity": sev_val,
+                    "reason": reason_val,
                     "evidence": ev,
                     "rule_code": d.get("triggered_rules", ["CONTEXTUAL_ANOMALY"])[0] if d.get("triggered_rules") else "CONTEXTUAL_RISK",
                     "decision_impact": d.get("decision", "ALLOW"),
                     "resulting_trust": d["trust_score"],
                     "timestamp": d["timestamp"],
                     "source": d.get("source", "persisted"),
+                    "signals": [{"category": cat_val, "reason": reason_val, "feature": ev.get("type", "RISK_SIGNAL").lower()}],
+                    "contextual_risk": sev_val,
+                    "decision": d.get("decision", "ALLOW"),
+                    "trust_after": d["trust_score"],
                 })
 
         if not self.risk_events:
@@ -1270,6 +1277,10 @@ class NetraEngine:
                     "resulting_trust": new_trust,
                     "timestamp": event.timestamp,
                     "source": event.source or "live",
+                    "signals": [{"category": s.category, "reason": s.reason, "feature": s.feature}],
+                    "contextual_risk": s.severity,
+                    "decision": decision,
+                    "trust_after": new_trust,
                 })
 
         elapsed_ms = round((time.perf_counter_ns() - start_ns) / 1_000_000.0, 2)

@@ -34,7 +34,7 @@ const SCENARIOS: Record<ScenarioCode, ScenarioDef> = {
     code: 'FLAGSHIP',
     title: 'Rapid Suspicious Withdrawal Attack',
     targetTraderId: '7842',
-    targetTraderName: 'Liam Vance',
+    targetTraderName: 'Maya Chen',
     severityTag: 'CRITICAL',
     summary:
       'Compounding attack kill chain: New Device → Datacenter IP → $25,000 Liquidity Injection → 50× Leverage Escalation → Capital Exfiltration to Fresh Wallet.',
@@ -107,7 +107,7 @@ const SCENARIOS: Record<ScenarioCode, ScenarioDef> = {
     code: 'TRAVEL',
     title: 'Legitimate Cross-Border Travel',
     targetTraderId: '7842',
-    targetTraderName: 'Liam Vance',
+    targetTraderName: 'Maya Chen',
     severityTag: 'GUARDED',
     summary:
       'Legitimate executive travel to Singapore. Residential ISP, proportional deposits, and routine leverage demonstrate zero false-positive disruption.',
@@ -150,7 +150,7 @@ const SCENARIOS: Record<ScenarioCode, ScenarioDef> = {
     code: 'FRAUD_RING',
     title: 'Collusive Multi-Account Syndicate Sweep',
     targetTraderId: '7102',
-    targetTraderName: 'Marcus Cole',
+    targetTraderName: 'Kavita Reddy',
     severityTag: 'HIGH',
     summary:
       'Coordinated syndicate sweep: Four ostensible strangers simultaneously withdraw $9,800 to identical wallets from shared proxy hardware.',
@@ -203,7 +203,7 @@ const SCENARIOS: Record<ScenarioCode, ScenarioDef> = {
     code: 'TAKEOVER',
     title: 'Hostile Account Takeover Surge',
     targetTraderId: '7842',
-    targetTraderName: 'Liam Vance',
+    targetTraderName: 'Maya Chen',
     severityTag: 'ELEVATED',
     summary:
       'Defense stripping attack: Adversary logs in from unknown hardware and systematically invalidates defenses: Password → 2FA → API Key.',
@@ -299,6 +299,8 @@ export function ScenarioAttackReplay({
   const scenarioTrader = useMemo(() => {
     return allTraders.find(t => t.trader_id === activeScenario.targetTraderId) || trader
   }, [allTraders, activeScenario.targetTraderId, trader])
+
+  const targetTraderDisplayName = scenarioTrader?.name || activeScenario.targetTraderName
 
   // Current recorded step outcome (if stepped)
   const activeStepResult = useMemo(() => {
@@ -512,7 +514,7 @@ export function ScenarioAttackReplay({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>TARGET:</span>
           <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>
-            #{activeScenario.targetTraderId} {activeScenario.targetTraderName}
+            #{activeScenario.targetTraderId} {targetTraderDisplayName}
           </span>
         </div>
       </div>
@@ -735,7 +737,7 @@ export function ScenarioAttackReplay({
                   BASELINE INTACT — 100% OPERATIONAL TRUST (94.0/100)
                 </div>
                 <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, maxWidth: 500, marginInline: 'auto' }}>
-                  Trader #{activeScenario.targetTraderId} ({activeScenario.targetTraderName}) has established a clean 90-day baseline with habitual deposit $3,000, 5× max leverage, domestic IP, and registered primary hardware. Click <b>NEXT STEP</b> or <b>AUTO-PLAY</b> to begin the attack replay.
+                  Trader #{activeScenario.targetTraderId} ({targetTraderDisplayName}) has established a clean 90-day baseline with habitual deposit $3,000, 5× max leverage, domestic IP, and registered primary hardware. Click <b>NEXT STEP</b> or <b>AUTO-PLAY</b> to begin the attack replay.
                 </div>
               </div>
             ) : (
@@ -800,7 +802,7 @@ export function ScenarioAttackReplay({
                   CONTINUOUS TRUST IMPACT GAUGE
                 </span>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginTop: 2 }}>
-                  Trader #{activeScenario.targetTraderId} // {activeScenario.targetTraderName}
+                  Trader #{activeScenario.targetTraderId} // {targetTraderDisplayName}
                 </div>
               </div>
 

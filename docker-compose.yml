@@ -1,7 +1,7 @@
 services:
   backend:
     build: ./backend
-    ports: ["8000:8000"]
+    ports: [ "8000:8000" ]
     environment:
       NETRA_ENV: production
     depends_on:
@@ -12,8 +12,8 @@ services:
 
   frontend:
     build: ./frontend
-    ports: ["8080:80"]
-    depends_on: [backend]
+    ports: [ "8080:80" ]
+    depends_on: [ backend ]
 
   postgres:
     image: postgres:16-alpine
@@ -22,18 +22,18 @@ services:
       POSTGRES_PASSWORD: netra_demo_only
       POSTGRES_DB: netra
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U netra -d netra"]
+      test: [ "CMD-SHELL", "pg_isready -U netra -d netra" ]
       interval: 5s
       timeout: 3s
       retries: 10
-    volumes: ["netra-postgres:/var/lib/postgresql/data"]
+    volumes: [ "netra-postgres:/var/lib/postgresql/data" ]
 
   neo4j:
     image: neo4j:5-community
     environment:
       NEO4J_AUTH: neo4j/netra_demo_only
-    ports: ["7474:7474", "7687:7687"]
-    volumes: ["netra-neo4j:/data"]
+    ports: [ "7474:7474", "7687:7687" ]
+    volumes: [ "netra-neo4j:/data" ]
 
 volumes:
   netra-postgres:

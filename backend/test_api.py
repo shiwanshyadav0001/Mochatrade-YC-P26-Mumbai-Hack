@@ -236,9 +236,60 @@ def test_risk_events_endpoint(monkeypatch):
 
     events = main.risk_events()
     assert len(events) >= 1
+    sample = events[0]
+    # Regression check: ensure fields expected by frontend risk-events table exist
+    assert "risk_id" in sample or "event_id" in sample
+    assert "trader_id" in sample
+    assert "event_type" in sample
+    assert "reason" in sample
+    assert "resulting_trust" in sample or "trust_after" in sample
+
     # Filter by trader_id
     filtered = main.risk_events(trader_id="7001")
     assert all(e["trader_id"] == "7001" for e in filtered)
+
+
+def test_canonical_trader_7842_identity(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    trader_data = test_engine.get_trader("7842")
+    assert trader_data is not None
+    assert trader_data["name"] == "Maya Chen"
+    assert trader_data["segment"] == "Retail Pro"
+
+    traders_list = main.traders()
+    t7842 = next((t for t in traders_list if t["trader_id"] == "7842"), None)
+    assert t7842 is not None
+    assert t7842["name"] == "Maya Chen"
+
+
+def test_topology_truth_distinction(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    # Ingest event linking device and IP for 7842
+    test_engine.ingest({
+        "trader_id": "7842",
+        "event_type": "LOGIN",
+        "device_id": "DEV-7842-TEST",
+        "ip_address": "198.51.100.42",
+    })
+
+    # Local graph for 7842 should be isolated 1-hop subgraph (3 nodes: trader, device, IP)
+    local_graph = test_engine.trader_graph("7842")
+    assert len(local_graph["nodes"]) == 3
+    assert len(local_graph["edges"]) == 2
+    node_ids = {n["id"] for n in local_graph["nodes"]}
+    assert "TRADER-7842" in node_ids
+    assert "DEV-7842-TEST" in node_ids
+    assert "IP-198.51.100.42" in node_ids
+
+    # Fleet-wide system graph contains clusters and multi-trader infrastructure
+    sys_graph = test_engine.system_graph()
+    assert len(sys_graph["nodes"]) >= 3
+    assert "clusters" in sys_graph
+    assert isinstance(sys_graph["clusters"], list)
 
 
 def test_traders_list_metadata(monkeypatch):
@@ -252,6 +303,7 @@ def test_traders_list_metadata(monkeypatch):
     assert "anomaly_score" in sample
     assert "last_activity" in sample
     assert "risk_dimensions" in sample
+
 
 
 
