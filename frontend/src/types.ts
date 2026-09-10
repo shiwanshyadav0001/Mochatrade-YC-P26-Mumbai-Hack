@@ -247,10 +247,12 @@ export type AuditRecord = {
 
 export type AuditVerifyResult = {
   valid: boolean
-  total_records: number
+  total_records?: number
   checked_records: number
-  genesis_hash: string
-  latest_hash: string
+  genesis_hash?: string
+  latest_hash?: string
+  head_hash?: string
+  message?: string
   first_invalid_record?: Record<string, any>
   reason?: string
 }

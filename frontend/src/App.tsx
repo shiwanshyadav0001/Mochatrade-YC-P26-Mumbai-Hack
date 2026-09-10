@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, setActorRole } from './api'
 import { soundManager } from './audio'
 import { CommandPalette } from './components/CommandPalette'
+import { CryptographicAuditVault } from './components/CryptographicAuditVault'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
+import { ForensicCaseWorkbench } from './components/ForensicCaseWorkbench'
 import { InteractiveGraph } from './components/InteractiveGraph'
 import { PolicySandbox } from './components/PolicySandbox'
 import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
@@ -132,6 +134,7 @@ export default function App() {
   const [eventTypeFilter, setEventTypeFilter] = useState('ALL')
 
   const [caseNoteInputs, setCaseNoteInputs] = useState<Record<string, string>>({})
+  const [auditFilterSubject, setAuditFilterSubject] = useState<string>('')
 
   const refreshSelected = useCallback(async (id?: string) => {
     const targetId = id || selectedIdRef.current
@@ -364,6 +367,44 @@ export default function App() {
     } catch (err: any) {
       setNotice(err.message || 'Verification rejected.')
     }
+  }
+
+  const resetBaseline = async (traderId: string) => {
+    try {
+      soundManager.playEventTick()
+      await api.send<any>('POST', `/traders/${traderId}/baseline/reset`)
+      soundManager.playSuccess()
+      setNotice(`BEHAVIORAL BASELINE RESET FOR TRADER #${traderId}. RE-BOOTSTRAPPING INITIALIZED.`)
+      await refreshAll()
+    } catch (err: any) {
+      setNotice(err.message || 'Baseline reset rejected.')
+    }
+  }
+
+  const exportAuditCSV = () => {
+    const rows = [
+      ['Timestamp', 'Actor', 'Event', 'Subject', 'Current Hash', 'Previous Hash', 'Reason', 'Policy Version'],
+      ...audit.map(a => [
+        a.timestamp,
+        a.actor,
+        a.event,
+        a.subject,
+        a.current_hash || 'GENESIS',
+        a.previous_hash || 'N/A',
+        `"${a.reason}"`,
+        a.policy_version,
+      ]),
+    ]
+    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map(r => r.join(',')).join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', 'netra_audit_vault.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    soundManager.playSuccess()
+    setNotice('AUDIT VAULT EXPORTED AS CSV WITH HASH CHAIN.')
   }
 
   const inject = async () => {
@@ -1991,140 +2032,30 @@ export default function App() {
 
           {/* VIEW: CASES & TRIAGE */}
           {view === 'CASES' && (
-            <div className="grid-12">
-              <div className="col-8">
-                <div className="panel">
-                  <div className="panel-header">
-                    <h3>Case Management & Investigation Queue</h3>
-                    <button className="btn btn-primary" style={{ fontSize: 10 }} onClick={createCase}>
-                      + CREATE CASE FOR #{selectedId}
-                    </button>
-                  </div>
-
-                  <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {cases.map(c => (
-                      <div
-                        key={c.case_id}
-                        style={{
-                          background: 'var(--bg-surface-0)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 4,
-                          padding: 12,
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <strong className="mono" style={{ fontSize: 12 }}>{c.case_id}</strong>
-                            <span className="mono" style={{ color: 'var(--text-muted)', fontSize: 10 }}>TRADER #{c.trader_id}</span>
-                            <StatusBadge value={c.severity} />
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <select
-                              value={c.status}
-                              onChange={e => updateCase(c.case_id, e.target.value)}
-                              style={{
-                                background: 'var(--bg-surface-2)',
-                                border: '1px solid var(--border-subtle)',
-                                borderRadius: 3,
-                                color: '#fff',
-                                fontSize: 10,
-                                fontFamily: 'var(--font-mono)',
-                                padding: '2px 4px',
-                              }}
-                            >
-                              <option value="OPEN">OPEN</option>
-                              <option value="INVESTIGATING">INVESTIGATING</option>
-                              <option value="ESCALATED">ESCALATED</option>
-                              <option value="RESOLVED">RESOLVED</option>
-                              <option value="FALSE_POSITIVE">FALSE_POSITIVE</option>
-                            </select>
-
-                            <button
-                              className="btn btn-secondary"
-                              style={{ padding: '2px 6px', fontSize: 10 }}
-                              onClick={() => inspectCase(c)}
-                            >
-                              EVIDENCE
-                            </button>
-                            <button
-                              className="btn btn-secondary"
-                              style={{ padding: '2px 6px', fontSize: 10 }}
-                              onClick={() => exportDossier(c.case_id)}
-                            >
-                              DOSSIER
-                            </button>
-                          </div>
-                        </div>
-
-                        <p style={{ fontSize: 11, color: 'var(--text-primary)', marginBottom: 8 }}>
-                          {c.reason}
-                        </p>
-
-                        {/* Investigation Notes Stream */}
-                        <div className="case-notes-container">
-                          <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
-                            INVESTIGATION TIMELINE & ANALYST NOTES ({c.notes?.length || 0}):
-                          </span>
-                          {c.notes?.map((n, idx) => (
-                            <div key={idx} className="case-note-bubble">
-                              <div className="case-note-head">
-                                <b>{n.author}</b>
-                                <span>{formatDate(n.timestamp)}</span>
-                              </div>
-                              <div className="case-note-text">{n.text}</div>
-                            </div>
-                          ))}
-
-                          <div className="note-add-row">
-                            <input
-                              type="text"
-                              placeholder="Add timestamped investigation triage note..."
-                              value={caseNoteInputs[c.case_id] || ''}
-                              onChange={e =>
-                                setCaseNoteInputs({ ...caseNoteInputs, [c.case_id]: e.target.value })
-                              }
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') addCaseNote(c.case_id)
-                              }}
-                            />
-                            <button className="btn btn-primary" style={{ fontSize: 10 }} onClick={() => addCaseNote(c.case_id)}>
-                              SAVE NOTE
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-4">
-                <div className="panel">
-                  <div className="panel-header">
-                    <h3>Investigator Runbook Protocol</h3>
-                    <span className="panel-meta">MOCHATRADE COMPLIANCE</span>
-                  </div>
-                  <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11 }}>
-                    <div style={{ padding: 8, background: 'var(--bg-surface-0)', borderLeft: '2px solid var(--accent-cobalt)' }}>
-                      <b>01 / SIGNAL DETECTION:</b> Evaluate automated contextual trigger (Withdrawal Hold or Sequence).
-                    </div>
-                    <div style={{ padding: 8, background: 'var(--bg-surface-0)', borderLeft: '2px solid var(--accent-cobalt)' }}>
-                      <b>02 / BASELINE AUDIT:</b> Cross-reference individual deposit, leverage, and device norms.
-                    </div>
-                    <div style={{ padding: 8, background: 'var(--bg-surface-0)', borderLeft: '2px solid var(--accent-cobalt)' }}>
-                      <b>03 / TOPOLOGY TRACE:</b> Identify shared collusive ring infrastructure on link graph.
-                    </div>
-                    <div style={{ padding: 8, background: 'var(--bg-surface-0)', borderLeft: '2px solid var(--accent-cobalt)' }}>
-                      <b>04 / STEP-UP CHALLENGE:</b> Prompt for biometric/2FA identity step-up without blanket account ban.
-                    </div>
-                    <div style={{ padding: 8, background: 'var(--bg-surface-0)', borderLeft: '2px solid var(--accent-cobalt)' }}>
-                      <b>05 / DOSSIER RECORD:</b> Export JSON evidence packet to tamper-evident vault.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ForensicCaseWorkbench
+              cases={cases}
+              traders={traders}
+              selectedTrader={selected}
+              decisions={decisions}
+              events={events}
+              auditRecords={audit}
+              userRole={userRole}
+              onUpdateCase={updateCase}
+              onCreateCase={createCase}
+              onAddCaseNote={addCaseNote}
+              onExportDossier={exportDossier}
+              onStepUpVerify={stepUpVerify}
+              onResetBaseline={resetBaseline}
+              onInspectTrader={inspectTrader}
+              onInspectEvidence={(d, ev, t) => {
+                setDrawerData({ decision: d, event: ev, trader: t })
+                setDrawerOpen(true)
+              }}
+              onNavigateToAudit={subjectId => {
+                if (subjectId) setAuditFilterSubject(subjectId)
+                setView('AUDIT')
+              }}
+            />
           )}
 
           {/* VIEW: POLICIES */}
@@ -2159,109 +2090,14 @@ export default function App() {
 
           {/* VIEW: AUDIT */}
           {view === 'AUDIT' && (
-            <div className="grid-12">
-              <div className="col-12">
-                <div className="panel">
-                  <div className="panel-header">
-                    <h3>Tamper-Evident SHA-256 Audit Vault</h3>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        className={`btn ${auditVerification?.valid ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ fontSize: 9 }}
-                        onClick={verifyAuditChain}
-                        disabled={verifyingAudit}
-                      >
-                        {verifyingAudit ? 'VERIFYING...' : 'VERIFY SHA-256 CHAIN'}
-                      </button>
-                      <button className="btn btn-secondary" style={{ fontSize: 9 }} onClick={() => {
-                        const rows = [
-                          ['Timestamp', 'Actor', 'Event', 'Subject', 'Current Hash', 'Previous Hash', 'Reason', 'Policy Version'],
-                          ...audit.map(a => [
-                            a.timestamp,
-                            a.actor,
-                            a.event,
-                            a.subject,
-                            a.current_hash || 'GENESIS',
-                            a.previous_hash || 'N/A',
-                            `"${a.reason}"`,
-                            a.policy_version,
-                          ]),
-                        ]
-                        const csvContent = 'data:text/csv;charset=utf-8,' + rows.map(r => r.join(',')).join('\n')
-                        const encodedUri = encodeURI(csvContent)
-                        const link = document.createElement('a')
-                        link.setAttribute('href', encodedUri)
-                        link.setAttribute('download', 'netra_audit_vault.csv')
-                        document.body.appendChild(link)
-                        link.click()
-                        document.body.removeChild(link)
-                        soundManager.playSuccess()
-                        setNotice('AUDIT VAULT EXPORTED AS CSV WITH HASH CHAIN.')
-                      }}>
-                        EXPORT AUDIT CSV
-                      </button>
-                    </div>
-                  </div>
-
-                  {auditVerification && (
-                    <div style={{
-                      padding: '8px 14px',
-                      margin: '10px 14px',
-                      borderRadius: 3,
-                      background: auditVerification.valid ? 'rgba(46, 213, 115, 0.08)' : 'rgba(255, 71, 87, 0.1)',
-                      borderLeft: `3px solid ${auditVerification.valid ? 'var(--accent-emerald, #2ed573)' : 'var(--accent-crimson, #ff4757)'}`,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      fontSize: 11,
-                    }}>
-                      <div>
-                        <b>{auditVerification.valid ? 'CRYPTOGRAPHIC INTEGRITY VERIFIED' : 'CHAIN TAMPERING DETECTED'}</b>
-                        <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
-                          {auditVerification.valid
-                            ? `${auditVerification.checked_records} records verified via SHA-256. Genesis: ${auditVerification.genesis_hash.slice(0, 8)}... | Head: ${auditVerification.latest_hash.slice(0, 8)}...`
-                            : `Violation: ${auditVerification.reason}`}
-                        </span>
-                      </div>
-                      <span className={`status-pill ${auditVerification.valid ? 'normal' : 'critical'}`}>
-                        {auditVerification.valid ? 'CHAIN VALID' : 'TAMPERED'}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="table-container">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>TIMESTAMP</th>
-                          <th>ACTOR</th>
-                          <th>EVENT TYPE</th>
-                          <th>SUBJECT</th>
-                          <th>SHA-256 HASH LINK</th>
-                          <th>REASON & REPRODUCIBILITY SUMMARY</th>
-                          <th>POLICY VER</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {audit.map(item => (
-                          <tr key={item.audit_id}>
-                            <td className="mono">{formatDate(item.timestamp)}</td>
-                            <td className="mono"><b>{item.actor}</b></td>
-                            <td><StatusBadge value={item.event} /></td>
-                            <td className="mono">{item.subject}</td>
-                            <td className="mono" style={{ fontSize: 9, color: 'var(--accent-cyan)' }} title={`Current: ${item.current_hash || 'N/A'}\nPrevious: ${item.previous_hash || 'N/A'}`}>
-                              {item.current_hash ? `${item.current_hash.slice(0, 8)}...${item.current_hash.slice(-6)}` : 'GENESIS'}
-                            </td>
-                            <td>{item.reason}</td>
-                            <td className="mono">{item.policy_version}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <CryptographicAuditVault
+              audit={audit}
+              verificationResult={auditVerification}
+              isVerifying={verifyingAudit}
+              onVerifyChain={verifyAuditChain}
+              onExportCSV={exportAuditCSV}
+              initialFilterSubject={auditFilterSubject}
+            />
           )}
 
           {/* VIEW: ANALYTICS */}
