@@ -596,3 +596,75 @@ Wait for explicit approval and instruction before beginning Phase 1. When author
 - Graph and ML signals feed into dimensional risk categories (`relationships`, `behaviour`).
 - Peak severity combination with category weights and sublinear compounding prevents multiple compounding penalties for the same underlying factor.
 - ML strictly informs trust assessment and is prohibited from independently enforcing direct `BLOCK` actions.
+
+---
+
+## 26. Pre-Day-4 Functional Reality Audit & Fix Pass (September 10, 2026)
+
+### 26.1 System State Classification Matrix
+- **REAL:**
+  - Trust score calculation (event → signals → aggregate contextual risk → trust delta → clamp(prior + delta) → SQLite state).
+  - Policy decisions (`ALLOW`, `MONITOR`, `VERIFY`, `RESTRICT`, `BLOCK`) derived strictly from trust score and action sensitivity.
+  - Multi-hop graph intelligence & cluster detection (`GraphIntelligenceEngine` via BFS and NetworkX).
+  - Unsupervised behavioral anomaly detection (`IsolationForest` on 12-dimensional feature vector).
+  - Multi-event kill chain temporal matching (`SequenceEngine` with duration windowing).
+  - Cryptographically chained SHA-256 audit ledger (`verify_audit_chain()`).
+  - Automated case creation upon severe restrictive decisions.
+  - Step-up biometric/2FA verification restoring trust and promoting devices.
+- **PARTIAL (Fixed):**
+  - Scenario state isolation: previously, running `TRAVEL` after `FLAGSHIP` retained prior flagship events for trader 7842. Fixed: `_isolate_scenario_trader()` now purges non-seed scenario residue and rebuilds baseline from clean historical seeds.
+  - Dynamic analytics: previously, `threat_trader_ids` defaulted to hardcoded IDs `{"7102", "7103", "7104", "7105"}` with fallback precision `0.95`. Fixed: threat identification is now derived dynamically from graph cluster intelligence and open cases; precision/recall return `None` when decisions are insufficient.
+- **DEMO / Scenario-Only:**
+  - One-click attack vector simulations (`FLAGSHIP`, `TRAVEL`, `FRAUD_RING`, `TAKEOVER`): these supply deterministic input events, but all scoring and decisions are evaluated in full by the live NETRA engine.
+- **FAKE / BROKEN (Identified & Fixed):**
+  - *Data Consistency Bug:* Live Monitor showed `trust = 6` while Trader Page showed `trust = 82`. Root cause: `latestDecision` was hardcoded to `decisions[0]` (the newest decision across *any* trader) rather than matching `selectedId`. Fixed: `latestDecision` now strictly resolves the decision for `selectedId`.
+  - *Missing Event Fetch Endpoint:* `main.py` lacked `GET /api/events`. Fixed: implemented `GET /api/events` and integrated into frontend `refreshAll()`.
+  - *Placeholder Fallbacks in Evidence Drawer:* Drawer displayed fake hardcoded fallbacks `'198.18.0.14'`, `'DEV-7842-PRIMARY'`, and `'Mumbai, IN'` when inspecting entities or non-network events. Fixed: placeholders removed; genuine context or `'N/A'` displayed.
+  - *Fake ENTITY_LOOKUP Graph Clicks:* Clicking graph nodes generated fake synthetic `ENTITY_LOOKUP` events. Fixed: clicking trader nodes opens trader forensics; clicking infrastructure nodes opens graph node records with connected edges.
+  - *Artificial Latency Clamping:* Latency was clamped to `max(2.5, elapsed_ms)`. Fixed: reports unmanipulated wall-clock elapsed time `elapsed_ms`.
+  - *Subsecond Sequence Matching:* Sequence events with matching millisecond timestamps could be dropped. Fixed: event chain ordering preserves equal timestamps with unique event identity check.
+
+---
+
+## 27. Day 4: Multi-Trader Operational Intelligence Recovery & Completion (September 10, 2026)
+
+### 27.1 Recovery Diagnostics & Root Cause Resolutions
+The previous Day 4 implementation was interrupted by an accidental termination during automated verification. Forensic inspection identified the exact failure points:
+1. **AssertionError in `test_anti_double_counting_across_engines`:**
+   - *Diagnosis:* Event actions for `NEW_DEVICE`, `DEVICE_CHANGE`, `IP_CHANGE`, and `GEO_CHANGE` defaulted to action `"TRADE"` (action sensitivity 50) rather than authentication sensitivity (`"LOGIN"`, sensitivity 30). This resulted in an excessive contextual penalty that breached the anti-double-counting boundary assertion.
+   - *Resolution:* Mapped device and IP change event types to action `"LOGIN"` (sensitivity 30), bringing trust deduction to proportional bounds and resolving the assertion.
+2. **Missing `self.rng` on Database Reload:**
+   - *Diagnosis:* `self.rng = random.Random(7842)` was set only inside `reset()`. When `NetraEngine` initialized with an existing `netra.db` database, `load_or_seed()` executed without calling `reset()`. Subsequent calls to `_isolate_scenario_trader()` called `_new_trader()` which referenced `self.rng.choice(...)`, triggering `AttributeError: 'NetraEngine' object has no attribute 'rng'`.
+   - *Resolution:* Initialized `self.rng` unconditionally in `NetraEngine.__init__()` and made segment selection deterministic in `_new_trader()`.
+3. **Graph Edge Duplication & Isolation Forest Outlier False-Positives:**
+   - *Diagnosis:* In `_update_graph()`, edge objects containing individual `event.event_id` in their evidence arrays were appended on every trade. This created duplicate edges between traders and infrastructure nodes, ballooning `graph_degree` from 2 to 20+. Because `BehavioralAnomalyService` was fitted with hardcoded `graph_degree=1`, normal trades were flagged as severe behavioral outliers (`UNSUPERVISED_BEHAVIORAL_ANOMALY`).
+   - *Resolution:* Implemented edge deduplication with evidence accumulation in `_update_graph()`, calculated distinct target degrees in `extract_feature_vector()` during both ingestion and training, and harmonized seed trade amounts to trader baselines.
+
+### 27.2 Multi-Trader Operational Population & Isolation
+- **106 Concurrent Identities:** Expanded from a single flagship profile to 106 distinct, persistent identities:
+  - `#7842` (Maya Chen): Flagship institutional trader.
+  - `#7001` (Elena Rostova): Normal retail pro trader with clean baseline (`Trust: 94.0`, `Status: NORMAL`).
+  - `#7002` (Liam Vance): Legitimate cross-border traveler in Singapore (`Trust: 80.3`, `Status: GUARDED`), requiring verification challenges rather than hard blocking.
+  - `#7003` (Aria Thorne): High-risk leverage speculator (`Trust: 27.5`, `Status: HIGH`).
+  - `#7004` (Marcus Sterling): Compromised account takeover victim (`Trust: 0.0`, `Status: CRITICAL`), with sensitive actions blocked.
+  - `#7102–#7105` (Kavita Reddy, Tariq Mansoor, Chen Wei, Vikram Malhotra): Coordinated fraud ring cluster sharing `DEV-RING-X`, `IP-RING-X`, and `WALLET-RING-X` (`Trust: 55.1`, `Status: ELEVATED`).
+  - `#7005–#7101`: 98 background market participants providing realistic population telemetry.
+- **Persistent State Isolation:** Each trader maintains isolated SQLite transitions, individual rolling baselines (`BaselineEngine`), temporal metrics (`TemporalWindowEngine`), and distinct graph degrees.
+
+### 27.3 System-Wide Topology & Contextual Risk APIs
+- **System Graph (`GET /api/graph/system`):** Returns the complete infrastructure topology (nodes, edges, and detected multi-trader clusters) with risk flags, relationship types, and affected trader IDs.
+- **Risk Events Feed (`GET /api/risk-events`):** Exposes operational risk incidents recorded by the contextual pipeline, with filtering by `trader_id`, `category`, `min_severity`, and `limit`.
+- **Enforcement Integration:** Attached `ActionEnforcementService.evaluate_action()` directly to `ingest()` returns and `decision_record`, ensuring that decisions and enforcement actions (`ALLOWED`, `MONITORED`, `CHALLENGED`, `RESTRICTED`, `BLOCKED`) are authoritative and tightly coupled.
+
+### 27.4 Verification Results
+- **Automated Tests:** 60 passed out of 60 (`python -m pytest -v` in 19.03s).
+- **Backend Compilation:** `python -m compileall backend` compiled cleanly with 0 errors.
+- **Frontend Build:** `npm run build` compiled successfully in 171ms with 0 errors.
+- **Live HTTP API Verification (`verify_day4_live.py`):** 10 out of 10 live checks passed against the active HTTP daemon.
+- **End-to-End Runtime Scenarios (`verify_scenarios_e2e.py`):**
+  - *Scenario A (Normal Trader #7001):* 0 triggered rules, 0 risk signals, trust remains 94.0, decision `ALLOW`, enforcement `ALLOWED`.
+  - *Scenario B (Legitimate Travel #7002):* Location change evaluated in context; trust remains 80.3 (`GUARDED`), withdrawal challenges rather than hard blocking.
+  - *Scenario C (Flagship Attack #7842):* Full 6-stage kill chain progression (`LOGIN` 94.0 -> `NEW_DEVICE` 84.8 -> `IP_CHANGE` 70.0 -> `LARGE_DEPOSIT` 49.5 -> `HIGH_LEVERAGE` 23.1 -> `WITHDRAWAL` 0.0). Kill chain detected, final decision `BLOCK`, enforcement `BLOCKED`, persistent case created, SHA-256 audit chain verified.
+  - *Scenario D (Fraud Ring #7102-#7105):* Discovered 4-trader cluster sharing `DEV-RING-X`, `IP-RING-X`, and `WALLET-RING-X` dynamically through graph links without hardcoded trader IDs.
+
+

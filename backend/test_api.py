@@ -178,3 +178,81 @@ def test_trader_anomaly_endpoint(monkeypatch):
     assert "status" in res
     assert "model_version" in res
 
+
+def test_get_events_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    # Ingest an event
+    ev = {"trader_id": "7842", "event_type": "LOGIN", "device_id": "DEV-TEST-1"}
+    test_engine.ingest(ev)
+
+    # Query all events
+    events = main.get_events_endpoint()
+    assert len(events) >= 1
+    assert any(e["event_type"] == "LOGIN" and e["trader_id"] == "7842" for e in events)
+
+    # Query filtered by trader
+    filtered = main.get_events_endpoint(trader_id="7842")
+    assert all(e["trader_id"] == "7842" for e in filtered)
+
+
+def test_reset_trader_baseline_endpoint(monkeypatch):
+    import asyncio
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    actor = {"actor_id": "admin-1", "role": "ADMIN"}
+    res = asyncio.run(main.reset_trader_baseline_endpoint("7842", actor=actor))
+    assert res["reset"] is True
+    assert res["trader_id"] == "7842"
+    assert "profile" in res
+
+
+def test_system_graph_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    res = main.system_graph()
+    assert "nodes" in res
+    assert "edges" in res
+    assert "clusters" in res
+    assert len(res["nodes"]) > 0
+
+
+def test_risk_events_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    # Ingest event with risk signal
+    test_engine.ingest({
+        "trader_id": "7001",
+        "event_type": "WITHDRAWAL",
+        "amount": 200000.0,
+        "device_id": "DEV-ANONYMOUS-77",
+        "ip_address": "198.51.100.77",
+        "wallet_address": "0xATTACKERWALLET7777",
+    })
+
+    events = main.risk_events()
+    assert len(events) >= 1
+    # Filter by trader_id
+    filtered = main.risk_events(trader_id="7001")
+    assert all(e["trader_id"] == "7001" for e in filtered)
+
+
+def test_traders_list_metadata(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
+
+    traders = main.traders()
+    assert len(traders) >= 105
+    sample = traders[0]
+    assert "open_case_count" in sample
+    assert "anomaly_score" in sample
+    assert "last_activity" in sample
+    assert "risk_dimensions" in sample
+
+
+
+

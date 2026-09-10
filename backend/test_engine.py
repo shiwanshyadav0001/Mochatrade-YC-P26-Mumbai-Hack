@@ -684,3 +684,224 @@ def test_takeover_scenario_resilience():
     assert decisions[-1] in {"RESTRICT", "BLOCK", "VERIFY"}
     assert results[-1]["trust"] < 60.0
 
+
+def test_normal_event_evaluation_and_trust():
+    """Regression Test 1: Normal event within baseline retains trust and ALLOW decision."""
+    engine = NetraEngine()
+    engine.reset()
+    initial_trust = engine.traders["7842"]["trust_score"]
+    assert initial_trust == 94.0
+
+    # Normal event: typical deposit from known primary device and known IP
+    normal_event = {
+        "trader_id": "7842",
+        "event_type": "DEPOSIT",
+        "amount": 2500,
+        "currency": "USD",
+        "device_id": "DEV-7842-PRIMARY",
+        "ip_address": "203.0.113.22",
+        "country": "IN",
+        "city": "Mumbai",
+    }
+    res = engine.ingest(normal_event)
+    assert res["trust"] >= 90.0
+    assert res["decision"]["decision"] == "ALLOW"
+    assert "baseline" in res["decision"]["explanation"]["summary"].lower() or "within" in res["decision"]["explanation"]["top_factors"][0].lower()
+
+
+def test_flagship_complete_progression():
+    """Regression Test 2: Full step-by-step flagship attack surge progression without score bypasses."""
+    engine = NetraEngine()
+    engine.reset()
+
+    trader_id, events = engine.prepare_scenario("FLAGSHIP")
+    assert len(events) == 6
+
+    step_results = []
+    for ev in events:
+        step_results.append(engine.ingest(ev))
+
+    # Event 1: LOGIN (known device & IP) -> ALLOW
+    assert step_results[0]["decision"]["decision"] == "ALLOW"
+    assert step_results[0]["trust"] == 94.0
+
+    # Event 2: NEW_DEVICE -> Trust begins dropping, MONITOR
+    assert step_results[1]["trust"] < 94.0
+    assert step_results[1]["decision"]["decision"] in {"MONITOR", "ALLOW"}
+
+    # Event 3: IP_CHANGE (Datacenter IP) -> Further trust decay
+    assert step_results[2]["trust"] < step_results[1]["trust"]
+
+    # Event 4: DEPOSIT ($25k high spike) -> Significant trust drop
+    assert step_results[3]["trust"] < step_results[2]["trust"]
+
+    # Event 5: LEVERAGE_CHANGE (50x) -> Sequence in progress (DEPOSIT -> LEVERAGE)
+    assert step_results[4]["trust"] < step_results[3]["trust"]
+
+    # Event 6: WITHDRAWAL ($24k to fresh wallet) -> Terminal restriction/block
+    final = step_results[5]
+    assert final["trust"] <= 20.0
+    assert final["decision"]["decision"] in {"RESTRICT", "BLOCK"}
+    # Auto-created case
+    assert any(c["trader_id"] == "7842" and c["status"] == "OPEN" for c in engine.cases.values())
+
+
+def test_travel_scenario_isolation_from_flagship():
+    """Regression Test 3: Running TRAVEL after FLAGSHIP does not contaminate TRAVEL with prior attack state."""
+    engine = NetraEngine()
+    engine.reset()
+
+    # 1. Run FLAGSHIP first to severely degrade 7842
+    _, flagship_events = engine.prepare_scenario("FLAGSHIP")
+    for ev in flagship_events:
+        engine.ingest(ev)
+    assert engine.traders["7842"]["trust_score"] <= 20.0
+
+    # 2. Now prepare and run TRAVEL
+    _, travel_events = engine.prepare_scenario("TRAVEL")
+    assert engine.traders["7842"]["trust_score"] == 94.0  # Cleanly isolated
+    assert len(engine.transitions["7842"]) == 0
+
+    travel_results = []
+    for ev in travel_events:
+        travel_results.append(engine.ingest(ev))
+
+    # Legitimate travel is contextualized against normal behavior and must NOT be BLOCKED
+    assert travel_results[-1]["decision"]["decision"] in {"ALLOW", "MONITOR"}
+    assert travel_results[-1]["trust"] > 70.0
+
+
+def test_fraud_ring_shared_infrastructure_discovery():
+    """Regression Test 4: Fraud ring shared infrastructure discovered topologically via Graph Intelligence."""
+    engine = NetraEngine()
+    engine.reset()
+
+    _, events = engine.prepare_scenario("FRAUD_RING")
+    for ev in events:
+        engine.ingest(ev)
+
+    # Graph intelligence detects the cluster
+    clusters = engine.graph_engine.detect_connected_clusters(engine.graph_links, engine.traders)
+    suspicious = [c for c in clusters if c.is_suspicious]
+    assert len(suspicious) >= 1
+    ring_cluster = suspicious[0]
+    # Discovers all 4 collusive traders purely through shared wallet/device/ip links
+    assert set(ring_cluster.affected_traders) == {"7102", "7103", "7104", "7105"}
+
+
+def test_trust_and_decision_data_consistency():
+    """Regression Test 5: Trader profile trust score and latest decision trust score must strictly agree."""
+    engine = NetraEngine()
+    engine.reset()
+
+    ev = {
+        "trader_id": "7842",
+        "event_type": "NEW_DEVICE",
+        "device_id": "DEV-TEST-CONSISTENCY",
+        "ip_address": "203.0.113.22",
+    }
+    res = engine.ingest(ev)
+
+    trader_data = engine.get_trader("7842")
+    assert trader_data["trust_score"] == res["trust"]
+    assert trader_data["trust_score"] == res["decision"]["trust_score"]
+    assert trader_data["last_decision"] == res["decision"]["decision"]
+
+
+def test_sequence_progress_partial_to_complete():
+    """Regression Test 6: Sequence progress increases from partial (1 event = none, 2 events = partial, 3 = complete)."""
+    from temporal import SequenceEngine
+
+    # 1 event: DEPOSIT only
+    ev1 = {"event_id": "E1", "event_type": "DEPOSIT", "timestamp": "2026-09-10T10:00:00Z"}
+    matches1 = SequenceEngine.evaluate_sequences(ev1, [])
+    assert len(matches1) == 0  # Requires at least 2 steps
+
+    # 2 events: DEPOSIT + LEVERAGE_CHANGE
+    ev2 = {"event_id": "E2", "event_type": "LEVERAGE_CHANGE", "timestamp": "2026-09-10T10:05:00Z"}
+    matches2 = SequenceEngine.evaluate_sequences(ev2, [ev1])
+    assert len(matches2) >= 1
+    assert matches2[0].completion_percentage == 67
+    assert matches2[0].is_terminal is False
+
+    # 3 events: DEPOSIT + LEVERAGE_CHANGE + WITHDRAWAL
+    ev3 = {"event_id": "E3", "event_type": "WITHDRAWAL", "timestamp": "2026-09-10T10:10:00Z"}
+    matches3 = SequenceEngine.evaluate_sequences(ev3, [ev1, ev2])
+    assert len(matches3) >= 1
+    assert matches3[0].completion_percentage == 100
+    assert matches3[0].is_terminal is True
+
+
+def test_reset_trader_baseline():
+    """Regression Test 7: reset_trader_baseline restores clean baseline profile and logs audit."""
+    engine = NetraEngine()
+    engine.reset()
+
+    # Modify trader baseline
+    engine.traders["7842"]["baseline"]["known_devices"].append("DEV-POISONED")
+    assert "DEV-POISONED" in engine.traders["7842"]["baseline"]["known_devices"]
+
+    # Reset
+    res = engine.reset_trader_baseline("7842", actor="test-admin")
+    assert res["reset"] is True
+    assert "DEV-POISONED" not in engine.traders["7842"]["baseline"]["known_devices"]
+    assert "DEV-7842-PRIMARY" in engine.traders["7842"]["baseline"]["known_devices"]
+    assert engine.audit[-1]["event"] == "BASELINE_RESET"
+
+
+def test_day4_multi_trader_state_isolation():
+    """Day 4: Verifies that events on one trader never leak into or alter another trader's score or baseline."""
+    engine = NetraEngine()
+    engine.reset()
+
+    score_7001_before = engine.traders["7001"]["trust_score"]
+    score_7002_before = engine.traders["7002"]["trust_score"]
+
+    # Ingest high-risk event on 7001
+    engine.ingest({
+        "trader_id": "7001",
+        "event_type": "WITHDRAWAL",
+        "amount": 150000.0,
+        "device_id": "DEV-ANONYMOUS-99",
+        "ip_address": "198.51.100.99",
+        "wallet_address": "0xATTACKERWALLET9999",
+    })
+
+    # 7001 dropped
+    assert engine.traders["7001"]["trust_score"] < score_7001_before
+    # 7002 must remain completely untouched
+    assert engine.traders["7002"]["trust_score"] == score_7002_before
+
+
+def test_day4_system_graph_and_clusters():
+    """Day 4: System graph provides comprehensive nodes, links, and identified multi-trader clusters."""
+    engine = NetraEngine()
+    engine.reset()
+
+    sys_graph = engine.system_graph()
+    assert "nodes" in sys_graph
+    assert "edges" in sys_graph
+    assert "clusters" in sys_graph
+    assert len(sys_graph["nodes"]) > 0
+    assert isinstance(sys_graph["clusters"], list)
+    # Check that fraud ring cluster is detected among clusters
+    ring_cluster_found = any(c.get("cluster_type") == "FRAUD_RING" or "7102" in c.get("affected_traders", []) for c in sys_graph["clusters"])
+    assert ring_cluster_found is True
+
+
+def test_day4_operational_analytics_metrics():
+    """Day 4: Analytics endpoint exposes truthful operational population metrics."""
+    engine = NetraEngine()
+    engine.reset()
+
+    stats = engine.analytics()
+    assert "operational_metrics" in stats
+    op = stats["operational_metrics"]
+    assert op["total_traders"] >= 105
+    assert "enforcement_counts" in op
+    assert op["blocked_traders"] >= 1
+    assert op["graph_clusters_detected"] >= 1
+
+
+
+

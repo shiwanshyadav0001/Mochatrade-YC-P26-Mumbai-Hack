@@ -182,6 +182,14 @@ async def post_event(
     return result
 
 
+@app.get("/api/events")
+def get_events_endpoint(
+    trader_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    return engine.get_events(trader_id=trader_id, limit=limit)
+
+
 @app.get("/api/traders")
 def traders() -> list[dict[str, Any]]:
     return engine.trader_list()
@@ -232,6 +240,11 @@ def trader_graph_intelligence(trader_id: str) -> dict[str, Any]:
     return engine.trader_graph_intelligence(trader_id)
 
 
+@app.get("/api/graph/system")
+def system_graph() -> dict[str, Any]:
+    return engine.system_graph()
+
+
 @app.get("/api/anomaly/status")
 def anomaly_status() -> dict[str, Any]:
     return engine.anomaly_service.get_status()
@@ -278,11 +291,18 @@ async def step_up_trader(
 
 
 @app.get("/api/risk-events")
-def risk_events() -> list[dict[str, Any]]:
-    return [
-        event for event in engine.events
-        if event.get("risk_relevance") in {"high", "critical"} or event.get("source") not in {"seed"}
-    ][-100:][::-1]
+def risk_events(
+    trader_id: str | None = None,
+    category: str | None = None,
+    min_severity: float | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    return engine.get_risk_events(
+        trader_id=trader_id,
+        category=category,
+        min_severity=min_severity,
+        limit=limit,
+    )
 
 
 @app.get("/api/decisions")
@@ -399,6 +419,19 @@ def trader_baseline_endpoint(trader_id: str) -> dict[str, Any]:
     if profile:
         return profile.to_dict()
     return engine.traders[trader_id].get("baseline", {})
+
+
+@app.post("/api/traders/{trader_id}/baseline/reset")
+async def reset_trader_baseline_endpoint(
+    trader_id: str,
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST"})),
+) -> dict[str, Any]:
+    try:
+        res = engine.reset_trader_baseline(trader_id, actor=actor["actor_id"])
+        await broadcast("TRADER_UPDATED", engine.get_trader(trader_id))
+        return res
+    except KeyError:
+        raise HTTPException(404, "Trader not found")
 
 
 @app.get("/api/policies")
@@ -539,3 +572,6 @@ async def stream(request: Request) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+# Netra Day 4 Multi-Trader Intelligence Service Active
+

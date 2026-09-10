@@ -56,7 +56,7 @@ export function CommandPalette({
       { id: 'nav-policy', title: 'POLICIES // Parameter Matrix & Pre-Commit Simulator', category: 'NAVIGATION', action: () => onNavigate('POLICIES') },
       { id: 'nav-sim', title: 'SCENARIO LAB // Executable Threat Vectors', category: 'NAVIGATION', action: () => onNavigate('SIMULATOR') },
       { id: 'nav-audit', title: 'AUDIT VAULT // Tamper-Evident Immutable Log', category: 'NAVIGATION', action: () => onNavigate('AUDIT') },
-      { id: 'nav-analytics', title: 'ANALYTICS // Precision & Hardware Latency Telemetry', category: 'NAVIGATION', action: () => onNavigate('ANALYTICS') },
+      { id: 'nav-analytics', title: 'ANALYTICS // Risk Engine Metrics & Evaluation Latency', category: 'NAVIGATION', action: () => onNavigate('ANALYTICS') },
 
       { id: 'act-flagship', title: 'EXECUTE // Flagship Suspicious Withdrawal Surge (#7842)', category: 'SCENARIOS', action: () => onRunScenario('FLAGSHIP', 'FAST'), badge: 'ATTACK' },
       { id: 'act-travel', title: 'EXECUTE // Legitimate Cross-Border Travel (#7842)', category: 'SCENARIOS', action: () => onRunScenario('TRAVEL', 'NORMAL') },

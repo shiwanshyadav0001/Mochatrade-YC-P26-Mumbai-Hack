@@ -287,11 +287,22 @@ class GraphIntelligenceEngine:
             max_strength = max(strengths) if strengths else 0.5
 
             # Evaluate suspiciousness:
-            # A cluster is suspicious if 2+ traders share HIGH-strength infrastructure (device, wallet),
-            # or if 3+ traders share IP infrastructure, or traders have low trust standing.
-            has_shared_wallet = any("WALLET" in n for n in shared_entities)
-            has_shared_device = any("DEV" in n for n in shared_entities)
-            has_shared_ip = any("IP" in n for n in shared_entities)
+            # Map each infrastructure entity to the set of traders directly connected to it
+            traders_per_entity: dict[str, set[str]] = defaultdict(set)
+            for e in comp_edges:
+                s, t = e["source"], e["target"]
+                if s.startswith("TRADER-") and not t.startswith("TRADER-"):
+                    traders_per_entity[t].add(s.replace("TRADER-", ""))
+                elif t.startswith("TRADER-") and not s.startswith("TRADER-"):
+                    traders_per_entity[s].add(t.replace("TRADER-", ""))
+
+            shared_wallets = [ent for ent, tids in traders_per_entity.items() if "WALLET" in ent and len(tids) >= 2]
+            shared_devices = [ent for ent, tids in traders_per_entity.items() if ("DEV" in ent or "DEVICE" in ent) and len(tids) >= 2]
+            shared_ips = [ent for ent, tids in traders_per_entity.items() if ("IP" in ent or "SUBNET" in ent) and len(tids) >= 3]
+
+            has_shared_wallet = len(shared_wallets) > 0
+            has_shared_device = len(shared_devices) > 0
+            has_shared_ip = len(shared_ips) > 0
 
             is_suspicious = False
             reasons = []
@@ -303,7 +314,7 @@ class GraphIntelligenceEngine:
                 if has_shared_device:
                     is_suspicious = True
                     reasons.append(f"{len(affected_traders)} traders share hardware device identifier(s)")
-                if has_shared_ip and len(affected_traders) >= 3:
+                if has_shared_ip:
                     is_suspicious = True
                     reasons.append(f"{len(affected_traders)} traders share IP network infrastructure")
 
@@ -366,13 +377,38 @@ class GraphIntelligenceEngine:
         if not other_traders:
             return signals
 
-        shared_entities = my_cluster.shared_entities
-        has_wallet = any("WALLET" in e for e in shared_entities)
-        has_device = any("DEV" in e for e in shared_entities)
-        has_ip = any("IP" in e for e in shared_entities)
+        # Identify entities trader_id directly connects to
+        my_entities = set()
+        for e in my_cluster.edges:
+            s, t = e["source"], e["target"]
+            if s == f"TRADER-{trader_id}":
+                my_entities.add(t)
+            elif t == f"TRADER-{trader_id}":
+                my_entities.add(s)
 
-        # 0. Overarching Suspicious Cluster Signal
-        if my_cluster.is_suspicious and len(my_cluster.affected_traders) >= 2:
+        # Map each entity to other traders directly connected to it
+        entity_traders: dict[str, set[str]] = defaultdict(set)
+        for e in my_cluster.edges:
+            s, t = e["source"], e["target"]
+            if s.startswith("TRADER-") and not t.startswith("TRADER-"):
+                entity_traders[t].add(s.replace("TRADER-", ""))
+            elif t.startswith("TRADER-") and not s.startswith("TRADER-"):
+                entity_traders[s].add(t.replace("TRADER-", ""))
+
+        directly_shared = {
+            ent for ent in my_entities if len(entity_traders[ent] - {trader_id}) >= 1
+        }
+
+        shared_wallet = next((e for e in directly_shared if "WALLET" in e), None)
+        shared_device = next((e for e in directly_shared if "DEV" in e or "DEVICE" in e), None)
+        shared_ip = next((e for e in directly_shared if ("IP" in e or "SUBNET" in e) and len(entity_traders[e] - {trader_id}) >= 2), None)
+
+        has_wallet = shared_wallet is not None
+        has_device = shared_device is not None
+        has_ip = shared_ip is not None
+
+        # 0. Overarching Suspicious Cluster Signal (only if cluster is suspicious and trader directly shares high-strength node)
+        if my_cluster.is_suspicious and (has_wallet or has_device or has_ip):
             signals.append(
                 GraphRiskSignal(
                     category="relationships",
@@ -393,7 +429,7 @@ class GraphIntelligenceEngine:
 
         # 1. Shared Wallet Cluster (Highest severity - 82.0)
         if has_wallet:
-            wallet_id = next((e for e in shared_entities if "WALLET" in e), "SHARED_WALLET")
+            wallet_id = shared_wallet
             signals.append(
                 GraphRiskSignal(
                     category="relationships",
@@ -417,7 +453,7 @@ class GraphIntelligenceEngine:
         # 2. Shared Device Cluster (Severity - 72.0)
         # Anti-double-counting: if wallet is already present, reduce device severity to 60.0 to represent correlated synergy
         if has_device:
-            dev_id = next((e for e in shared_entities if "DEV" in e), "SHARED_DEVICE")
+            dev_id = shared_device
             dev_sev = 60.0 if has_wallet else 72.0
             signals.append(
                 GraphRiskSignal(
@@ -440,8 +476,8 @@ class GraphIntelligenceEngine:
             )
 
         # 3. Shared IP Cluster (Lower severity - 42.0, only if 2+ other traders share it)
-        if has_ip and len(other_traders) >= 2 and not (has_wallet and has_device):
-            ip_id = next((e for e in shared_entities if "IP" in e), "SHARED_IP")
+        if has_ip and not (has_wallet and has_device):
+            ip_id = shared_ip
             signals.append(
                 GraphRiskSignal(
                     category="relationships",
@@ -533,7 +569,18 @@ class GraphIntelligenceEngine:
 
         nodes = []
         for entity in traversal["nodes"]:
-            node_type = entity.split("-", 1)[0]
+            raw_type = entity.split("-", 1)[0]
+            if raw_type in {"DEV", "DEVICE"}:
+                node_type = "DEVICE"
+            elif raw_type in {"IP", "SUBNET"}:
+                node_type = "IP"
+            elif raw_type in {"WALLET", "ADDRESS"}:
+                node_type = "WALLET"
+            elif raw_type in {"TRADER", "USER"}:
+                node_type = "TRADER"
+            else:
+                node_type = raw_type
+
             is_cluster = entity in cluster_node_set
 
             if node_type == "TRADER":
@@ -589,3 +636,76 @@ class GraphIntelligenceEngine:
             "relationship_strengths": self.strengths,
             "summary": my_cluster.explanation if my_cluster else "No connected cluster detected for this trader.",
         }
+
+    def format_system_graph_response(
+        self,
+        links: list[dict[str, Any]],
+        traders_map: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Formats a system-wide topology response including all active entities and clusters."""
+        clusters = self.detect_connected_clusters(links, traders_map)
+        cluster_node_set: set[str] = set()
+        for cl in clusters:
+            if cl.is_suspicious:
+                cluster_node_set.update(cl.nodes)
+
+        unique_nodes: set[str] = set()
+        edges = []
+        for l in links:
+            s, t = l["source"], l["target"]
+            unique_nodes.add(s)
+            unique_nodes.add(t)
+            edges.append({
+                "source": s,
+                "target": t,
+                "type": l.get("type", "CONNECTED"),
+                "strength": self.get_relationship_strength(l.get("type", "CONNECTED")),
+            })
+
+        nodes = []
+        for entity in sorted(unique_nodes):
+            raw_type = entity.split("-", 1)[0]
+            if raw_type in {"DEV", "DEVICE"}:
+                node_type = "DEVICE"
+            elif raw_type in {"IP", "SUBNET"}:
+                node_type = "IP"
+            elif raw_type in {"WALLET", "ADDRESS"}:
+                node_type = "WALLET"
+            elif raw_type in {"TRADER", "USER"}:
+                node_type = "TRADER"
+            else:
+                node_type = raw_type
+
+            is_cluster = entity in cluster_node_set
+            if node_type == "TRADER":
+                tid = entity.replace("TRADER-", "")
+                t_score = traders_map.get(tid, {}).get("trust_score", 86.0) if traders_map else 86.0
+                risk = round(100.0 - t_score, 1)
+                if is_cluster:
+                    risk = max(risk, 78.0)
+            else:
+                risk = 85.0 if is_cluster else 24.0
+
+            nodes.append({
+                "id": entity,
+                "label": entity.replace("TRADER-", "#"),
+                "type": node_type,
+                "risk": risk,
+                "is_cluster": is_cluster,
+            })
+
+        has_cluster = any(n.get("is_cluster") for n in nodes)
+        suspicious_count = sum(1 for c in clusters if c.is_suspicious)
+        summary = (
+            f"System-wide topology: {len(nodes)} entities, {len(edges)} relationships, "
+            f"{len(clusters)} connected clusters ({suspicious_count} suspicious)."
+        )
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "clusters": [c.to_dict() for c in clusters],
+            "summary": summary,
+            "has_cluster": has_cluster,
+        }
+

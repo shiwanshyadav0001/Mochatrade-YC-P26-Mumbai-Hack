@@ -199,8 +199,12 @@ class SequenceEngine:
         curr_type = current_event.get("event_type", "").upper()
 
         # Combine chronological event chain up to and including current event
+        curr_id = current_event.get("event_id")
         chain = sorted(
-            [e for e in historical_events if parse_iso(e["timestamp"]) < curr_dt] + [current_event],
+            [
+                e for e in historical_events
+                if e is not current_event and (curr_id is None or e.get("event_id") != curr_id) and parse_iso(e["timestamp"]) <= curr_dt
+            ] + [current_event],
             key=lambda item: parse_iso(item["timestamp"]),
         )
 

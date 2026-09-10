@@ -8,6 +8,14 @@ interface EvidenceDrawerProps {
     event?: Event
     decision?: Decision
     trader?: Trader
+    caseItem?: any
+    entity?: {
+      id: string
+      type: string
+      risk?: number
+      is_cluster?: boolean
+      edges?: any[]
+    }
   } | null
   onStepUpVerify?: (traderId: string) => void
   onOpenTrader?: (traderId: string) => void
@@ -25,8 +33,8 @@ export function EvidenceDrawer({
 
   if (!isOpen || !data) return null
 
-  const { event, decision, trader } = data
-  const traderId = event?.trader_id || decision?.trader_id || trader?.trader_id || 'UNKNOWN'
+  const { event, decision, trader, caseItem, entity } = data
+  const traderId = event?.trader_id || decision?.trader_id || trader?.trader_id || caseItem?.trader_id || (entity ? entity.id : 'UNKNOWN')
 
   const copyPayload = () => {
     navigator.clipboard.writeText(JSON.stringify(data, null, 2))
@@ -40,10 +48,10 @@ export function EvidenceDrawer({
         <div className="drawer-header">
           <div>
             <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-              FORENSIC DOSSIER // TRADER #{traderId}
+              {entity ? `GRAPH TOPOLOGY ENTITY // ${entity.type}` : `FORENSIC DOSSIER // TRADER #${traderId}`}
             </span>
             <div className="drawer-title">
-              {event?.event_type || decision?.action || `PROFILE-INSPECT-${traderId}`}
+              {event?.event_type || decision?.action || (caseItem ? `CASE-${caseItem.case_id}` : (entity ? entity.id : `PROFILE-${traderId}`))}
             </div>
           </div>
           <button className="btn btn-secondary" style={{ padding: '2px 8px' }} onClick={onClose}>
@@ -75,6 +83,53 @@ export function EvidenceDrawer({
         <div className="drawer-content">
           {activeTab === 'FORENSICS' && (
             <>
+              {/* Entity Node Inspection Card */}
+              {entity && (
+                <div className="drawer-card">
+                  <div className="drawer-card-title">TOPOLOGY NODE RECORD</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div>
+                      <span className="mono" style={{ fontSize: 13, fontWeight: 700 }}>{entity.id}</span>
+                      <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                        CATEGORY: {entity.type} {entity.is_cluster && '| MONITORED RISK CLUSTER'}
+                      </div>
+                    </div>
+                    {entity.risk !== undefined && (
+                      <span className={`status-pill ${entity.risk > 70 ? 'critical' : 'normal'}`}>
+                        RISK: {entity.risk}/100
+                      </span>
+                    )}
+                  </div>
+                  {entity.edges && entity.edges.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>CONNECTED GRAPH EDGES:</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                        {entity.edges.map((edge: any, i: number) => (
+                          <div key={i} className="mono" style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg-surface-0)', borderRadius: 2 }}>
+                            {edge.source} → {edge.type} → {edge.target}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Case Record Card */}
+              {caseItem && (
+                <div className="drawer-card">
+                  <div className="drawer-card-title">ATTACHED INVESTIGATION CASE</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span className="mono"><b>{caseItem.case_id}</b></span>
+                    <span className={`status-pill ${caseItem.status?.toLowerCase() || 'normal'}`}>{caseItem.status}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{caseItem.reason}</div>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 6 }}>
+                    TRADER: #{caseItem.trader_id} | SEVERITY: {caseItem.severity} | CREATED: {caseItem.created_at}
+                  </div>
+                </div>
+              )}
+
               {decision && (
                 <div className="drawer-card">
                   <div className="drawer-card-title">NETRA EVALUATION OUTCOME</div>
@@ -84,7 +139,7 @@ export function EvidenceDrawer({
                         {decision.decision} // {decision.risk_level}
                       </span>
                       <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-                        CONFIDENCE: {decision.confidence} | LATENCY: {decision.processing_latency_ms}ms
+                        CONFIDENCE: {decision.confidence} | EVAL LATENCY: {decision.processing_latency_ms}ms
                       </div>
                     </div>
                     <div className="trust-display" style={{ textAlign: 'right' }}>
@@ -96,7 +151,7 @@ export function EvidenceDrawer({
                     </div>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-secondary)', background: 'var(--bg-surface-0)', padding: 8, borderRadius: 3 }}>
-                    {decision.explanation.recommendation}
+                    <b>SOP:</b> {decision.explanation.recommendation}
                   </div>
                 </div>
               )}
@@ -123,23 +178,25 @@ export function EvidenceDrawer({
                   <tbody>
                     <tr>
                       <td style={{ color: 'var(--text-muted)', width: 140 }}>IP ADDRESS</td>
-                      <td className="mono ip-address"><b>{event?.ip_address || '198.18.0.14'}</b></td>
+                      <td className="mono ip-address">
+                        <b>{event?.ip_address || (entity?.type === 'IP' ? entity.id.replace('IP-', '') : 'N/A')}</b>
+                      </td>
                     </tr>
                     <tr>
                       <td style={{ color: 'var(--text-muted)' }}>NETWORK CATEGORY</td>
                       <td>
-                        <span className={`status-pill ${event?.network_type === 'datacenter' ? 'critical' : 'normal'}`}>
-                          {event?.network_type ? event.network_type.toUpperCase() : 'RESIDENTIAL'}
+                        <span className={`status-pill ${event?.network_type === 'datacenter' ? 'critical' : (event?.ip_address ? 'normal' : 'elevated')}`}>
+                          {event?.network_type ? event.network_type.toUpperCase() : (event?.ip_address ? 'RESIDENTIAL' : 'N/A')}
                         </span>
                       </td>
                     </tr>
                     <tr>
                       <td style={{ color: 'var(--text-muted)' }}>GEO LOCATION</td>
-                      <td>{event?.city ? `${event.city}, ${event.country}` : 'Mumbai, IN'}</td>
+                      <td>{event?.city ? `${event.city}, ${event.country || ''}` : (event?.country || 'N/A')}</td>
                     </tr>
                     <tr>
                       <td style={{ color: 'var(--text-muted)' }}>DEVICE FINGERPRINT</td>
-                      <td className="mono">{event?.device_id || 'DEV-7842-PRIMARY'}</td>
+                      <td className="mono">{event?.device_id || (entity?.type === 'DEVICE' ? entity.id : 'N/A')}</td>
                     </tr>
                     {event?.wallet_address && (
                       <tr>

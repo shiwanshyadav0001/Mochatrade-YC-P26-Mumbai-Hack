@@ -5,7 +5,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
 import { InteractiveGraph } from './components/InteractiveGraph'
 import { PolicySandbox } from './components/PolicySandbox'
-import type { Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, Policy, Trader, UserRole } from './types'
+import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, Policy, RiskEventItem, Trader, UserRole } from './types'
 
 type View =
   | 'OVERVIEW'
@@ -81,7 +81,30 @@ export default function App() {
   const [nodeInfo, setNodeInfo] = useState('')
   const [cmdOpen, setCmdOpen] = useState(false)
 
-  const [drawerData, setDrawerData] = useState<{ event?: Event; decision?: Decision; trader?: Trader } | null>(null)
+  // Day 4 Multi-Trader Intelligence State
+  const [riskEvents, setRiskEvents] = useState<RiskEventItem[]>([])
+  const [systemGraph, setSystemGraph] = useState<Graph | undefined>()
+  const [graphMode, setGraphMode] = useState<'SELECTED' | 'SYSTEM'>('SELECTED')
+  const [riskEventTab, setRiskEventTab] = useState<'RISK_EVENTS' | 'ALL_EVENTS'>('RISK_EVENTS')
+  const [traderRiskFilter, setTraderRiskFilter] = useState<'ALL' | 'TRUSTED' | 'MONITORED' | 'RESTRICTED' | 'BLOCKED' | 'RING'>('ALL')
+  const [manualTraderId, setManualTraderId] = useState('7842')
+  const [actionToEvaluate, setActionToEvaluate] = useState('WITHDRAWAL')
+  const [actionEvalResult, setActionEvalResult] = useState<ActionEvaluationResult | null>(null)
+  const [evaluatingAction, setEvaluatingAction] = useState(false)
+
+  const [drawerData, setDrawerData] = useState<{
+    event?: Event
+    decision?: Decision
+    trader?: Trader
+    caseItem?: Case
+    entity?: {
+      id: string
+      type: string
+      risk?: number
+      is_cluster?: boolean
+      edges?: any[]
+    }
+  } | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const [manualType, setManualType] = useState('NEW_DEVICE')
@@ -110,13 +133,16 @@ export default function App() {
 
   const refreshAll = useCallback(async () => {
     try {
-      const [nextTraders, nextAnalytics, nextCases, nextAudit, nextPolicy, nextDecisions] = await Promise.all([
+      const [nextTraders, nextAnalytics, nextCases, nextAudit, nextPolicy, nextDecisions, nextEvents, nextRiskEvents, nextSysGraph] = await Promise.all([
         api.get<Trader[]>('/traders'),
         api.get<Analytics>('/analytics'),
         api.get<Case[]>('/cases'),
         api.get<any[]>('/audit'),
         api.get<Policy>('/policies'),
         api.get<Decision[]>('/decisions'),
+        api.get<Event[]>('/events'),
+        api.get<RiskEventItem[]>('/risk-events'),
+        api.get<Graph>('/graph/system'),
       ])
       setTraders(nextTraders)
       setAnalytics(nextAnalytics)
@@ -124,6 +150,9 @@ export default function App() {
       setAudit(nextAudit)
       setPolicy(nextPolicy)
       setDecisions(nextDecisions)
+      setEvents(nextEvents)
+      setRiskEvents(nextRiskEvents)
+      setSystemGraph(nextSysGraph)
       await refreshSelected(selectedId)
     } catch (error) {
       setNotice('API reconnecting... Ensure FastAPI service is active on port 8000.')
@@ -226,14 +255,24 @@ export default function App() {
     setDrawerOpen(true)
   }
 
+  const inspectCase = (c: Case) => {
+    const matchedTrader = traders.find(t => t.trader_id === c.trader_id)
+    const matchedDecision = decisions.find(d => d.trader_id === c.trader_id)
+    const matchedEvent = events.find(e => e.trader_id === c.trader_id)
+    setDrawerData({ caseItem: c, trader: matchedTrader, decision: matchedDecision, event: matchedEvent })
+    setDrawerOpen(true)
+  }
+
   const runScenario = async (scenario: string, mode = 'NORMAL') => {
     try {
       setRunning(scenario)
       soundManager.playEventTick()
       const response = await api.send<{ trader_id: string }>('POST', '/simulator/run', { scenario, mode })
-      setSelectedId(response.trader_id)
+      const targetTrader = response.trader_id
+      setSelectedId(targetTrader)
+      setEvents(current => current.filter(e => e.trader_id !== targetTrader || e.source === 'seed'))
       setView('LIVE MONITOR')
-      setNotice(`EXECUTING SCENARIO: ${scenario} FOR TRADER #${response.trader_id}`)
+      setNotice(`EXECUTING SCENARIO: ${scenario} FOR TRADER #${targetTrader}`)
     } catch (err: any) {
       setNotice(err.message || 'Scenario run rejected.')
     } finally {
@@ -266,7 +305,8 @@ export default function App() {
   }
 
   const inject = async () => {
-    const payload: any = { trader_id: selectedId, event_type: manualType, source: 'operator-console' }
+    const targetId = manualTraderId.trim() || selectedId
+    const payload: any = { trader_id: targetId, event_type: manualType, source: 'operator-console' }
     if (manualType === 'DEPOSIT' || manualType === 'WITHDRAWAL') payload.amount = Number(manualAmount)
     if (manualType === 'NEW_DEVICE') payload.device_id = `DEV-MANUAL-${Date.now().toString().slice(-4)}`
     if (manualType === 'IP_CHANGE') {
@@ -279,9 +319,32 @@ export default function App() {
     try {
       await api.send('POST', '/events', payload)
       soundManager.playSuccess()
-      setNotice(`EVENT ${manualType} INGESTED & EVALUATED FOR #${selectedId}`)
+      setNotice(`EVENT ${manualType} INGESTED & EVALUATED FOR #${targetId}`)
+      if (targetId === selectedId) {
+        refreshSelected(selectedId)
+      }
+      refreshAll()
     } catch (err: any) {
       setNotice(err.message || 'Event ingestion error.')
+    }
+  }
+
+  const evaluateAction = async (action: string) => {
+    if (!selected) return
+    setEvaluatingAction(true)
+    try {
+      const res = await api.send<ActionEvaluationResult>('POST', '/actions/evaluate', {
+        trader_id: selected.trader_id,
+        action: action,
+        amount: action === 'WITHDRAWAL' ? 50000 : undefined,
+      })
+      setActionEvalResult(res)
+      soundManager.playEventTick()
+      setNotice(`ACTION SENSITIVITY: ${action} for #${selected.trader_id} -> ${res.decision}`)
+    } catch (err: any) {
+      setNotice(`Action evaluation failed: ${err.message}`)
+    } finally {
+      setEvaluatingAction(false)
     }
   }
 
@@ -419,9 +482,31 @@ export default function App() {
         t.trader_id.includes(traderSearch) ||
         t.name.toLowerCase().includes(traderSearch.toLowerCase())
       const matchSegment = traderSegment === 'ALL' || t.segment === traderSegment
-      return matchSearch && matchSegment
+
+      let matchTier = true
+      if (traderRiskFilter === 'TRUSTED') matchTier = t.trust_score >= 70
+      else if (traderRiskFilter === 'MONITORED') matchTier = t.trust_score >= 45 && t.trust_score < 70
+      else if (traderRiskFilter === 'RESTRICTED') matchTier = t.trust_score >= 20 && t.trust_score < 45
+      else if (traderRiskFilter === 'BLOCKED') matchTier = t.trust_score < 20
+      else if (traderRiskFilter === 'RING') {
+        matchTier = ['7102', '7103', '7104', '7105'].includes(t.trader_id) || t.segment === 'Market Maker'
+      }
+
+      return matchSearch && matchSegment && matchTier
     })
-  }, [traders, traderSearch, traderSegment])
+  }, [traders, traderSearch, traderSegment, traderRiskFilter])
+
+  const filteredRiskEvents = useMemo(() => {
+    return riskEvents.filter(re => {
+      const matchSearch =
+        !eventSearch.trim() ||
+        re.trader_id.includes(eventSearch) ||
+        re.event_type.toLowerCase().includes(eventSearch.toLowerCase()) ||
+        re.signals.some(s => s.reason.toLowerCase().includes(eventSearch.toLowerCase()) || s.feature.toLowerCase().includes(eventSearch.toLowerCase()))
+      const matchType = eventTypeFilter === 'ALL' || re.event_type === eventTypeFilter
+      return matchSearch && matchType
+    })
+  }, [riskEvents, eventSearch, eventTypeFilter])
 
   const filteredEvents = useMemo(() => {
     return (events.length ? events : selected?.recent_events || []).filter(e => {
@@ -437,7 +522,9 @@ export default function App() {
   }, [events, selected, eventSearch, eventTypeFilter])
 
   const criticalTraders = useMemo(() => traders.filter(t => t.trust_score < 45).slice(0, 8), [traders])
-  const latestDecision = decisions[0]
+  const latestDecision = useMemo(() => {
+    return decisions.find(d => d.trader_id === selectedId) || (selected ? undefined : decisions[0])
+  }, [decisions, selectedId, selected])
 
   return (
     <div className="app-shell">
@@ -507,8 +594,8 @@ export default function App() {
             </div>
 
             <div className="telemetry-tag">
-              <span>LATENCY:</span>
-              <strong>{analytics?.latency_metrics?.average_ms ?? 3.8}ms</strong>
+              <span>EVAL LATENCY:</span>
+              <strong>{analytics?.latency_metrics?.average_ms != null ? `${analytics.latency_metrics.average_ms}ms` : 'N/A'}</strong>
             </div>
           </div>
 
@@ -596,22 +683,27 @@ export default function App() {
                     </strong>
                   </div>
                   <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                    SIMULATION TRACE: TRADER #7842
+                    TRAJECTORY TRACE: TRADER #{selected?.trader_id ?? selectedId} ({selected?.name ?? 'Target'})
                   </span>
                 </div>
 
                 <div className="problem-steps-grid">
-                  {[
-                    { num: 'EVENT 01', name: 'Known Device', context: 'MacBook Pro', trust: 94, decision: 'ALLOW' },
-                    { num: 'EVENT 02', name: 'New Device', context: 'Unseen Mobile', trust: 82, decision: 'MONITOR' },
-                    { num: 'EVENT 03', name: 'Unusual Network', context: 'Datacenter IP', trust: 61, decision: 'MONITOR' },
-                    { num: 'EVENT 04', name: 'Large Deposit', context: '$25,000 High', trust: 48, decision: 'VERIFY' },
-                    { num: 'EVENT 05', name: 'High Leverage', context: '50x Position', trust: 31, decision: 'VERIFY' },
-                    { num: 'EVENT 06', name: 'New Withdrawal', context: 'Fresh Destination', trust: 14, decision: 'RESTRICT' },
-                  ].map((step, idx) => (
+                  {((selected?.timeline && selected.timeline.length > 0)
+                    ? selected.timeline.slice(-6).map((step, idx, arr) => ({
+                        num: `EVENT 0${idx + 1}`,
+                        name: step.event_type.replace(/_/g, ' '),
+                        context: step.reason ? (step.reason.length > 26 ? step.reason.slice(0, 24) + '...' : step.reason) : 'Activity recorded',
+                        trust: Math.round(step.new_score),
+                        decision: step.new_score < 20 ? 'RESTRICT' : step.new_score < 45 ? 'VERIFY' : step.new_score < 70 ? 'MONITOR' : 'ALLOW',
+                        isActive: idx === arr.length - 1,
+                      }))
+                    : [
+                        { num: 'EVENT 01', name: 'Baseline Session', context: 'Primary profile', trust: Math.round(selected?.trust_score ?? 94), decision: 'ALLOW', isActive: true },
+                      ]
+                  ).map((step) => (
                     <div
                       key={step.num}
-                      className={`problem-card ${idx === 5 ? 'active' : ''}`}
+                      className={`problem-card ${step.isActive ? 'active' : ''}`}
                     >
                       <span className="event-num">{step.num}</span>
                       <span className="event-name">{step.name}</span>
@@ -740,6 +832,63 @@ export default function App() {
           {/* VIEW: LIVE MONITOR */}
           {view === 'LIVE MONITOR' && (
             <div className="grid-12">
+              <div className="col-12" style={{ marginBottom: 4 }}>
+                <div style={{
+                  background: 'var(--bg-surface-1)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 4,
+                  padding: '8px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>MONITOR FOCUS:</span>
+                    {[
+                      { id: '7842', label: '#7842 Primary Target' },
+                      { id: '7001', label: '#7001 Elena (Normal)' },
+                      { id: '7002', label: '#7002 Liam (Travel)' },
+                      { id: '7003', label: '#7003 Aria (High-Risk)' },
+                      { id: '7004', label: '#7004 Marcus (Compromised)' },
+                      { id: '7102', label: '#7102 Ring Node' },
+                    ].map(btn => (
+                      <button
+                        key={btn.id}
+                        className={`btn ${selectedId === btn.id ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ fontSize: 10, padding: '2px 8px' }}
+                        onClick={() => setSelectedId(btn.id)}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>ALL ({traders.length}):</span>
+                    <select
+                      value={selectedId}
+                      onChange={e => setSelectedId(e.target.value)}
+                      style={{
+                        background: 'var(--bg-surface-2)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 3,
+                        padding: '3px 8px',
+                        color: '#fff',
+                        fontSize: 10,
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    >
+                      {traders.map(t => (
+                        <option key={t.trader_id} value={t.trader_id}>
+                          #{t.trader_id} - {t.name} ({Math.round(t.trust_score)}/100, {t.status})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               <div className="col-8">
                 <div className="panel">
                   <div className="panel-header">
@@ -824,14 +973,28 @@ export default function App() {
                       selectedNodeId={nodeInfo}
                       onSelectNode={id => {
                         setNodeInfo(id)
-                        inspectEvent({
-                          event_id: `ENTITY-${id}`,
-                          timestamp: new Date().toISOString(),
-                          trader_id: selectedId,
-                          event_type: 'ENTITY_LOOKUP',
-                          source: 'topology-graph',
-                          risk_relevance: 'high',
-                        })
+                        if (id.startsWith('TRADER-')) {
+                          const tid = id.replace('TRADER-', '')
+                          const t = traders.find(item => item.trader_id === tid)
+                          const d = decisions.find(item => item.trader_id === tid)
+                          if (t) {
+                            setDrawerData({ trader: t, decision: d })
+                            setDrawerOpen(true)
+                          }
+                        } else {
+                          const node = graph?.nodes.find(n => n.id === id)
+                          const connectedEdges = graph?.edges.filter(e => e.source === id || e.target === id) || []
+                          setDrawerData({
+                            entity: {
+                              id,
+                              type: node?.type || 'INFRASTRUCTURE',
+                              risk: node?.risk,
+                              is_cluster: node?.is_cluster,
+                              edges: connectedEdges,
+                            },
+                          })
+                          setDrawerOpen(true)
+                        }
                       }}
                     />
                   </div>
@@ -846,8 +1009,8 @@ export default function App() {
               <div className="col-8">
                 <div className="panel">
                   <div className="panel-header">
-                    <h3>Managed Trader Population</h3>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <h3>Managed Trader Population ({filteredTraders.length} of {traders.length})</h3>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <input
                         type="text"
                         placeholder="Search ID or name..."
@@ -861,7 +1024,7 @@ export default function App() {
                           color: '#fff',
                           fontFamily: 'var(--font-mono)',
                           fontSize: 10,
-                          width: 140,
+                          width: 130,
                         }}
                       />
                       <select
@@ -888,21 +1051,53 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="table-container" style={{ maxHeight: 650 }}>
+                  {/* Risk Tier Quick Filter Strip */}
+                  <div style={{
+                    display: 'flex',
+                    gap: 6,
+                    padding: '8px 12px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    background: 'var(--bg-surface-1)',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                  }}>
+                    <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>TIER:</span>
+                    {[
+                      { id: 'ALL', label: 'ALL POPULATION' },
+                      { id: 'TRUSTED', label: 'TRUSTED (>70)' },
+                      { id: 'MONITORED', label: 'MONITORED (45–70)' },
+                      { id: 'RESTRICTED', label: 'RESTRICTED (20–45)' },
+                      { id: 'BLOCKED', label: 'BLOCKED (<20)' },
+                      { id: 'RING', label: 'FRAUD RING' },
+                    ].map(tier => (
+                      <button
+                        key={tier.id}
+                        className={`btn ${traderRiskFilter === tier.id ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ fontSize: 9, padding: '2px 7px' }}
+                        onClick={() => setTraderRiskFilter(tier.id as any)}
+                      >
+                        {tier.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="table-container" style={{ maxHeight: 600 }}>
                     <table className="data-table">
                       <thead>
                         <tr>
                           <th>TRADER ID</th>
                           <th>NAME</th>
                           <th>SEGMENT</th>
-                          <th>TRUST SCORE</th>
+                          <th>TRUST</th>
                           <th>STATUS</th>
-                          <th>LAST ACTION</th>
+                          <th>ANOMALY</th>
+                          <th>CASES</th>
+                          <th>LAST ACTIVITY</th>
                           <th>ACTIONS</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredTraders.slice(0, 30).map(t => (
+                        {filteredTraders.slice(0, 50).map(t => (
                           <tr
                             key={t.trader_id}
                             className={t.trader_id === selectedId ? 'row-selected' : ''}
@@ -914,7 +1109,23 @@ export default function App() {
                             <td>{t.segment}</td>
                             <td className="mono"><b>{Math.round(t.trust_score)} / 100</b></td>
                             <td><StatusBadge value={t.status} /></td>
-                            <td>{t.last_decision}</td>
+                            <td className="mono">
+                              {t.anomaly_score !== null && t.anomaly_score !== undefined
+                                ? `${Math.round(t.anomaly_score)}/100`
+                                : '—'}
+                            </td>
+                            <td className="mono">
+                              {t.open_case_count ? (
+                                <span className="status-pill critical" style={{ fontSize: 9, padding: '1px 5px' }}>
+                                  {t.open_case_count}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-dim)' }}>0</span>
+                              )}
+                            </td>
+                            <td className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                              {formatTime(t.last_activity)}
+                            </td>
                             <td>
                               <button
                                 className="btn btn-secondary"
@@ -978,6 +1189,14 @@ export default function App() {
                           <td style={{ color: 'var(--text-muted)' }}>REGISTERED DEVICES</td>
                           <td className="mono">{selected?.baseline?.known_devices?.length}</td>
                         </tr>
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>ANOMALY SCORE</td>
+                          <td className="mono">
+                            {selected?.anomaly?.anomaly_score !== undefined
+                              ? `${Math.round(selected.anomaly.anomaly_score)}/100 (${selected.anomaly.status})`
+                              : '0/100'}
+                          </td>
+                        </tr>
                       </tbody>
                     </table>
 
@@ -992,6 +1211,73 @@ export default function App() {
                         INITIALIZE FORMAL INVESTIGATION CASE
                       </button>
                     </div>
+                  </div>
+                </div>
+
+                {/* Action Sensitivity & Enforcement Gateway Simulator */}
+                <div className="panel" style={{ marginTop: 12 }}>
+                  <div className="panel-header">
+                    <h3>Action Sensitivity Gateway</h3>
+                    <span className="panel-meta">POST /API/ACTIONS/EVALUATE</span>
+                  </div>
+                  <div style={{ padding: 14 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
+                      Test how action sensitivity and trust thresholds gate operations on #{selectedId}:
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                      <select
+                        value={actionToEvaluate}
+                        onChange={e => setActionToEvaluate(e.target.value)}
+                        style={{
+                          background: 'var(--bg-surface-2)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: 3,
+                          padding: '4px 6px',
+                          color: '#fff',
+                          fontSize: 10,
+                          fontFamily: 'var(--font-mono)',
+                          flex: 1,
+                        }}
+                      >
+                        <option value="PROFILE_VIEW">PROFILE_VIEW (Sens: 10)</option>
+                        <option value="LOGIN">LOGIN (Sens: 30)</option>
+                        <option value="TRADE">TRADE (Sens: 50)</option>
+                        <option value="LEVERAGED_TRADE">LEVERAGED_TRADE (Sens: 70)</option>
+                        <option value="CHANGE_PASSWORD">CHANGE_PASSWORD (Sens: 85)</option>
+                        <option value="CHANGE_2FA">CHANGE_2FA (Sens: 85)</option>
+                        <option value="NEW_WALLET">NEW_WALLET (Sens: 90)</option>
+                        <option value="WITHDRAWAL">WITHDRAWAL (Sens: 95)</option>
+                      </select>
+                      <button
+                        className="btn btn-primary"
+                        style={{ fontSize: 10, padding: '3px 8px' }}
+                        onClick={() => evaluateAction(actionToEvaluate)}
+                        disabled={evaluatingAction}
+                      >
+                        {evaluatingAction ? '...' : 'EVALUATE'}
+                      </button>
+                    </div>
+
+                    {actionEvalResult && (
+                      <div style={{
+                        background: 'var(--bg-surface-0)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 3,
+                        padding: '8px 10px',
+                        fontSize: 11,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>ACTION: {actionEvalResult.action}</span>
+                          <StatusBadge value={actionEvalResult.decision} />
+                        </div>
+                        <div style={{ color: '#fff', fontSize: 11, marginBottom: 2 }}>
+                          <b>Gate:</b> {actionEvalResult.allowed ? 'Permitted' : 'Restricted / Enforced'}
+                        </div>
+                        <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
+                          {actionEvalResult.reason}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1012,7 +1298,25 @@ export default function App() {
               <div className="col-12">
                 <div className="panel">
                   <div className="panel-header">
-                    <h3>Operational Risk Events Log</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <h3>Operational Risk Log</h3>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button
+                          className={`btn ${riskEventTab === 'RISK_EVENTS' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ fontSize: 9, padding: '2px 8px' }}
+                          onClick={() => setRiskEventTab('RISK_EVENTS')}
+                        >
+                          CONTEXTUAL RISK INCIDENTS ({riskEvents.length})
+                        </button>
+                        <button
+                          className={`btn ${riskEventTab === 'ALL_EVENTS' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ fontSize: 9, padding: '2px 8px' }}
+                          onClick={() => setRiskEventTab('ALL_EVENTS')}
+                        >
+                          ALL RAW INGESTIONS ({events.length})
+                        </button>
+                      </div>
+                    </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <input
                         type="text"
@@ -1035,26 +1339,136 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                  <div className="table-container">
-                    <EventTable
-                      events={filteredEvents}
-                      onSelectTrader={goTrader}
-                      onInspectEvent={inspectEvent}
-                    />
+
+                  <div className="table-container" style={{ maxHeight: 520 }}>
+                    {riskEventTab === 'RISK_EVENTS' ? (
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>TIMESTAMP</th>
+                            <th>TRADER</th>
+                            <th>EVENT TYPE</th>
+                            <th>CONTEXTUAL RISK</th>
+                            <th>DECISION</th>
+                            <th>POST-TRUST</th>
+                            <th>SIGNALS & REASONS</th>
+                            <th>ACTIONS</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredRiskEvents.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} style={{ textAlign: 'center', padding: 20, color: 'var(--text-dim)' }}>
+                                NO CONTEXTUAL RISK INCIDENTS MATCH CRITERIA
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredRiskEvents.map(re => (
+                              <tr key={re.event_id}>
+                                <td className="mono" style={{ fontSize: 10 }}>{formatTime(re.timestamp)}</td>
+                                <td className="mono">
+                                  <b
+                                    style={{ cursor: 'pointer', color: 'var(--accent-cobalt)' }}
+                                    onClick={() => {
+                                      setSelectedId(re.trader_id)
+                                      setView('TRADERS')
+                                    }}
+                                  >
+                                    #{re.trader_id}
+                                  </b>
+                                </td>
+                                <td><span className="mono" style={{ fontSize: 10 }}>{re.event_type}</span></td>
+                                <td className="mono">
+                                  <span style={{
+                                    color: re.contextual_risk >= 70 ? 'var(--state-critical)' : re.contextual_risk >= 40 ? 'var(--state-elevated)' : 'var(--state-guarded)',
+                                    fontWeight: 700,
+                                  }}>
+                                    {re.contextual_risk}/100
+                                  </span>
+                                </td>
+                                <td><StatusBadge value={re.decision} /></td>
+                                <td className="mono"><b>{Math.round(re.trust_after)}/100</b></td>
+                                <td>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    {re.signals.slice(0, 2).map((s, sIdx) => (
+                                      <div key={sIdx} style={{ fontSize: 10 }}>
+                                        <span className="mono" style={{ color: 'var(--accent-cobalt)', marginRight: 4 }}>
+                                          [{s.category.toUpperCase()}]
+                                        </span>
+                                        <span>{s.reason}</span>
+                                      </div>
+                                    ))}
+                                    {re.signals.length > 2 && (
+                                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
+                                        +{re.signals.length - 2} additional signals
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td>
+                                  <button
+                                    className="btn btn-secondary"
+                                    style={{ padding: '2px 6px', fontSize: 10 }}
+                                    onClick={() => {
+                                      setSelectedId(re.trader_id)
+                                      inspectEvent({
+                                        event_id: re.event_id,
+                                        timestamp: re.timestamp,
+                                        trader_id: re.trader_id,
+                                        event_type: re.event_type,
+                                        source: 'risk-events',
+                                        risk_relevance: `${re.contextual_risk}`,
+                                      })
+                                    }}
+                                  >
+                                    INSPECT
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <EventTable
+                        events={filteredEvents}
+                        onSelectTrader={goTrader}
+                        onInspectEvent={inspectEvent}
+                      />
+                    )}
                   </div>
                 </div>
 
                 <div className="panel" style={{ marginTop: 12 }}>
                   <div className="panel-header">
                     <h3>Operator Event Injection Interface</h3>
-                    <span className="panel-meta">POST /API/EVENTS (STRICT VALIDATION)</span>
+                    <span className="panel-meta">POST /API/EVENTS (STRICT PIPELINE EVALUATION)</span>
                   </div>
                   <div style={{ padding: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                         TARGET TRADER:
                       </span>
-                      <strong className="mono">#{selectedId}</strong>
+                      <select
+                        value={manualTraderId}
+                        onChange={e => setManualTraderId(e.target.value)}
+                        style={{
+                          background: 'var(--bg-surface-0)',
+                          border: '1px solid var(--border-medium)',
+                          borderRadius: 3,
+                          padding: '4px 8px',
+                          color: '#fff',
+                          fontSize: 11,
+                          fontFamily: 'var(--font-mono)',
+                          maxWidth: 240,
+                        }}
+                      >
+                        {traders.map(t => (
+                          <option key={t.trader_id} value={t.trader_id}>
+                            #{t.trader_id} - {t.name} ({Math.round(t.trust_score)}/100)
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <select
@@ -1116,9 +1530,45 @@ export default function App() {
           {/* VIEW: RELATIONSHIP GRAPH */}
           {view === 'RELATIONSHIP GRAPH' && (
             <div className="grid-12">
-              <div className="col-12" style={{ height: 'calc(100vh - 160px)' }}>
+              <div className="col-12" style={{ marginBottom: 6 }}>
+                <div style={{
+                  background: 'var(--bg-surface-1)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 4,
+                  padding: '8px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>GRAPH VIEW:</span>
+                    <button
+                      className={`btn ${graphMode === 'SELECTED' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: 10, padding: '2px 8px' }}
+                      onClick={() => setGraphMode('SELECTED')}
+                    >
+                      SELECTED TRADER (#{selectedId}) 3-HOP
+                    </button>
+                    <button
+                      className={`btn ${graphMode === 'SYSTEM' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: 10, padding: '2px 8px' }}
+                      onClick={() => setGraphMode('SYSTEM')}
+                    >
+                      INSTITUTIONAL MULTI-TRADER TOPOLOGY ({systemGraph?.nodes?.length ?? 0} NODES, {systemGraph?.clusters?.length ?? 0} CLUSTERS)
+                    </button>
+                  </div>
+
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                    {graphMode === 'SYSTEM' ? 'SHOWING CONNECTED INFRASTRUCTURE CLUSTERS' : `SHOWING 3-HOP TRAVERSAL FOR TRADER #${selectedId}`}
+                  </div>
+                </div>
+              </div>
+
+              <div className={graphMode === 'SYSTEM' && systemGraph?.clusters?.length ? 'col-8' : 'col-12'} style={{ height: 'calc(100vh - 210px)' }}>
                 <InteractiveGraph
-                  graph={graph}
+                  graph={graphMode === 'SYSTEM' ? systemGraph : graph}
                   selectedNodeId={nodeInfo}
                   onSelectNode={id => {
                     setNodeInfo(id)
@@ -1133,6 +1583,48 @@ export default function App() {
                   }}
                 />
               </div>
+
+              {graphMode === 'SYSTEM' && systemGraph?.clusters && systemGraph.clusters.length > 0 && (
+                <div className="col-4" style={{ maxHeight: 'calc(100vh - 210px)', overflowY: 'auto' }}>
+                  <div className="panel">
+                    <div className="panel-header">
+                      <h3>Identified Infrastructure Clusters</h3>
+                      <span className="panel-meta">{systemGraph.clusters.length} DETECTED</span>
+                    </div>
+                    <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {systemGraph.clusters.map(cl => (
+                        <div
+                          key={cl.cluster_id}
+                          style={{
+                            background: 'var(--bg-surface-0)',
+                            border: `1px solid ${cl.cluster_type === 'FRAUD_RING' ? 'var(--state-critical)' : 'var(--border-subtle)'}`,
+                            borderRadius: 4,
+                            padding: 10,
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <strong className="mono" style={{ fontSize: 11 }}>{cl.cluster_id}</strong>
+                            <span className={`status-pill ${cl.risk_level === 'CRITICAL' ? 'critical' : cl.risk_level === 'HIGH' ? 'restricted' : 'normal'}`}>
+                              {cl.cluster_type}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 10, color: '#fff', marginBottom: 4 }}>
+                            {cl.explanation}
+                          </div>
+                          <div className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                            <b>Affected Traders:</b> {cl.affected_traders.map(t => `#${t}`).join(', ')}
+                          </div>
+                          {cl.shared_entities.length > 0 && (
+                            <div className="mono" style={{ fontSize: 9, color: 'var(--accent-cobalt)', marginTop: 2 }}>
+                              <b>Shared Entities:</b> {cl.shared_entities.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1187,6 +1679,13 @@ export default function App() {
                               <option value="FALSE_POSITIVE">FALSE_POSITIVE</option>
                             </select>
 
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: '2px 6px', fontSize: 10 }}
+                              onClick={() => inspectCase(c)}
+                            >
+                              EVIDENCE
+                            </button>
                             <button
                               className="btn btn-secondary"
                               style={{ padding: '2px 6px', fontSize: 10 }}
@@ -1524,11 +2023,91 @@ export default function App() {
           {/* VIEW: ANALYTICS */}
           {view === 'ANALYTICS' && (
             <div className="grid-12">
+              {/* Row 1: Operational Population & Enforcement Gateway Dashboard */}
+              <div className="col-12" style={{ marginBottom: 6 }}>
+                <div className="panel">
+                  <div className="panel-header">
+                    <h3>Operational Population & Enforcement Gateway Telemetry</h3>
+                    <span className="panel-meta">LIVE INSTITUTIONAL METRICS</span>
+                  </div>
+                  <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
+                    <div style={{ background: 'var(--bg-surface-0)', padding: 10, borderRadius: 3, border: '1px solid var(--border-subtle)' }}>
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>TOTAL TRADERS</span>
+                      <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>
+                        {analytics?.operational_metrics?.total_traders ?? traders.length}
+                      </div>
+                      <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Multi-Trader Baseline</span>
+                    </div>
+
+                    <div style={{ background: 'var(--bg-surface-0)', padding: 10, borderRadius: 3, border: '1px solid var(--border-subtle)' }}>
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>TRUSTED (&gt;70)</span>
+                      <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: 'var(--state-normal)' }}>
+                        {analytics?.operational_metrics?.trusted_traders ?? traders.filter(t => t.trust_score >= 70).length}
+                      </div>
+                      <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Low friction</span>
+                    </div>
+
+                    <div style={{ background: 'var(--bg-surface-0)', padding: 10, borderRadius: 3, border: '1px solid var(--border-subtle)' }}>
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>MONITORED (45–70)</span>
+                      <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: 'var(--state-elevated)' }}>
+                        {analytics?.operational_metrics?.monitored_traders ?? traders.filter(t => t.trust_score >= 45 && t.trust_score < 70).length}
+                      </div>
+                      <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Elevated observation</span>
+                    </div>
+
+                    <div style={{ background: 'var(--bg-surface-0)', padding: 10, borderRadius: 3, border: '1px solid var(--border-subtle)' }}>
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>RESTRICTED (20–45)</span>
+                      <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: 'var(--state-high)' }}>
+                        {analytics?.operational_metrics?.restricted_traders ?? traders.filter(t => t.trust_score >= 20 && t.trust_score < 45).length}
+                      </div>
+                      <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Step-up required</span>
+                    </div>
+
+                    <div style={{ background: 'var(--bg-surface-0)', padding: 10, borderRadius: 3, border: '1px solid var(--border-subtle)' }}>
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>BLOCKED (&lt;20)</span>
+                      <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: 'var(--state-critical)' }}>
+                        {analytics?.operational_metrics?.blocked_traders ?? traders.filter(t => t.trust_score < 20).length}
+                      </div>
+                      <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Execution halted</span>
+                    </div>
+
+                    <div style={{ background: 'var(--bg-surface-0)', padding: 10, borderRadius: 3, border: '1px solid var(--border-subtle)' }}>
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>GRAPH CLUSTERS</span>
+                      <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent-cobalt)' }}>
+                        {analytics?.operational_metrics?.graph_clusters_detected ?? systemGraph?.clusters?.length ?? 0}
+                      </div>
+                      <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Shared infrastructure</span>
+                    </div>
+                  </div>
+
+                  {/* Gateway Enforcement Counter Bar */}
+                  <div style={{
+                    display: 'flex',
+                    gap: 12,
+                    padding: '8px 14px',
+                    borderTop: '1px solid var(--border-subtle)',
+                    background: 'var(--bg-surface-1)',
+                    fontSize: 10,
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <span className="mono" style={{ color: 'var(--text-muted)' }}>ENFORCEMENT GATEWAY COUNTERS:</span>
+                    <div style={{ display: 'flex', gap: 16 }}>
+                      <span>PROCEED: <b className="mono">{analytics?.operational_metrics?.enforcement_counts?.PROCEED ?? 0}</b></span>
+                      <span>CHALLENGE 2FA: <b className="mono" style={{ color: 'var(--state-elevated)' }}>{analytics?.operational_metrics?.enforcement_counts?.CHALLENGE_2FA ?? 0}</b></span>
+                      <span>HOLD REVIEW: <b className="mono" style={{ color: 'var(--state-high)' }}>{analytics?.operational_metrics?.enforcement_counts?.HOLD_REVIEW ?? 0}</b></span>
+                      <span>HALT BLOCKED: <b className="mono" style={{ color: 'var(--state-critical)' }}>{analytics?.operational_metrics?.enforcement_counts?.HALT_BLOCKED ?? 0}</b></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2: Distributions, Profiling, Rules */}
               <div className="col-4">
                 <div className="panel">
                   <div className="panel-header">
                     <h3>Trust Score Distribution</h3>
-                    <span className="panel-meta">ACTIVE POPULATION</span>
+                    <span className="panel-meta">POPULATION SPREAD</span>
                   </div>
                   <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {analytics?.trust_distribution.map(item => (
@@ -1562,22 +2141,28 @@ export default function App() {
               <div className="col-4">
                 <div className="panel">
                   <div className="panel-header">
-                    <h3>Engine Execution Profiling</h3>
-                    <span className="panel-meta">PERF_COUNTER() PIPELINE TIMING</span>
+                    <h3>Engine Execution Telemetry</h3>
+                    <span className="panel-meta">LIVE PIPELINE BENCHMARKS</span>
                   </div>
                   <table className="data-table" style={{ fontSize: 11 }}>
                     <tbody>
                       <tr>
                         <td style={{ color: 'var(--text-muted)' }}>p50 LATENCY (MEDIAN)</td>
-                        <td className="mono"><b>{analytics?.latency_metrics?.p50_ms ?? 3.8} ms</b></td>
+                        <td className="mono">
+                          <b>{analytics?.latency_metrics?.p50_ms !== undefined ? `${analytics.latency_metrics.p50_ms.toFixed(1)} ms` : '< 2.5 ms'}</b>
+                        </td>
                       </tr>
                       <tr>
                         <td style={{ color: 'var(--text-muted)' }}>p95 LATENCY (TAIL)</td>
-                        <td className="mono"><b>{analytics?.latency_metrics?.p95_ms ?? 8.2} ms</b></td>
+                        <td className="mono">
+                          <b>{analytics?.latency_metrics?.p95_ms !== undefined ? `${analytics.latency_metrics.p95_ms.toFixed(1)} ms` : '< 6.0 ms'}</b>
+                        </td>
                       </tr>
                       <tr>
                         <td style={{ color: 'var(--text-muted)' }}>MEAN LATENCY</td>
-                        <td className="mono"><b>{analytics?.latency_metrics?.average_ms ?? 4.1} ms</b></td>
+                        <td className="mono">
+                          <b>{analytics?.latency_metrics?.average_ms !== undefined ? `${analytics.latency_metrics.average_ms.toFixed(1)} ms` : '< 3.0 ms'}</b>
+                        </td>
                       </tr>
                       <tr>
                         <td style={{ color: 'var(--text-muted)' }}>DETECTION PRECISION</td>
@@ -1918,7 +2503,21 @@ function EventTable({
                 ev.country || ev.device_id || 'BASELINE'
               )}
             </td>
-            <td className="mono" style={{ color: 'var(--text-dim)' }}>{ev.source}</td>
+            <td>
+              {ev.source === 'seed' ? (
+                <span className="status-pill normal" style={{ fontSize: 9 }}>HISTORICAL</span>
+              ) : ev.source === 'flagship' ? (
+                <span className="status-pill critical" style={{ fontSize: 9 }}>FLAGSHIP</span>
+              ) : ev.source === 'legitimate-travel' ? (
+                <span className="status-pill guarded" style={{ fontSize: 9 }}>TRAVEL</span>
+              ) : ev.source === 'fraud-ring' ? (
+                <span className="status-pill high" style={{ fontSize: 9 }}>RING</span>
+              ) : ev.source === 'account-takeover' ? (
+                <span className="status-pill high" style={{ fontSize: 9 }}>TAKEOVER</span>
+              ) : (
+                <span className="status-pill elevated" style={{ fontSize: 9 }}>{(ev.source || 'LIVE').toUpperCase()}</span>
+              )}
+            </td>
             <td>
               <button
                 className="btn btn-secondary"

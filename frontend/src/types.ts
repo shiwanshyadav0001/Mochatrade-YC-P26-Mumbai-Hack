@@ -69,6 +69,11 @@ export type Trader = {
   last_decision: string
   event_count: number
   relationship_summary: string
+  open_case_count?: number
+  anomaly_score?: number | null
+  last_activity?: string
+  cases?: Case[]
+  anomaly?: any
   baseline?: {
     deposit_amount?: number
     leverage?: number
@@ -113,6 +118,18 @@ export type GraphEdge = {
   target: string
   type: string
   evidence: string[]
+  strength?: number
+}
+
+export type GraphCluster = {
+  cluster_id: string
+  affected_traders: string[]
+  cluster_type: string
+  confidence: number
+  explanation: string
+  shared_entities: string[]
+  risk_level: string
+  edges: GraphEdge[]
 }
 
 export type Graph = {
@@ -120,6 +137,39 @@ export type Graph = {
   edges: GraphEdge[]
   summary: string
   has_cluster?: boolean
+  clusters?: GraphCluster[]
+}
+
+export type RiskEventSignal = {
+  category: string
+  feature: string
+  severity: number
+  contribution: number
+  reason: string
+  rule_code: string
+}
+
+export type RiskEventItem = {
+  event_id: string
+  trader_id: string
+  timestamp: string
+  event_type: string
+  signals: RiskEventSignal[]
+  contextual_risk: number
+  decision: string
+  trust_after: number
+}
+
+export type OperationalMetrics = {
+  total_traders: number
+  trusted_traders: number
+  monitored_traders: number
+  restricted_traders: number
+  blocked_traders: number
+  open_cases: number
+  active_risk_events: number
+  graph_clusters_detected: number
+  enforcement_counts: Record<string, number>
 }
 
 export type Analytics = {
@@ -131,6 +181,7 @@ export type Analytics = {
     open_cases: number
     suspicious_clusters: number
   }
+  operational_metrics?: OperationalMetrics
   trust_distribution: { band: string; count: number }[]
   decision_distribution: { decision: string; count: number }[]
   latency_metrics?: {
