@@ -717,9 +717,6 @@ Provide a unified, one-click operational demonstration engine enabling judges, r
    - Added full-screen modal launcher for seamless, distraction-free demonstrations from any view.
    - Connected cross-surface deep links to `Live Telemetry Monitor`, `Forensic Case Workbench`, and `Cryptographic Audit Vault`.
    - Added `FLAGSHIP // Unified Operational Demonstration Engine` entry in Institutional Command Palette (Cmd+K / Ctrl+K).
-5. **Cross-Surface Single-Event Synchronization (`App.tsx`):**
-   - Bound `targetEventId` across `inspectEvent`, `inspectDecision`, and `inspectCase` to synchronize trader focus and exact event selection across all views.
-   - Wired `targetEvent` and `targetDecision` useMemos into `ReasoningEvidenceChain` on the Overview command surface, ensuring the inspect pipeline grounds the 9-stage causal reasoning chain on the explicitly selected event rather than defaulting to array index 0.
 
 ### Verification
 - **Backend Test Suite:** 97/97 tests passing (`backend\.venv\Scripts\python.exe -m pytest backend/`).

@@ -447,14 +447,6 @@ export default function App() {
   }
 
   const inspectEvent = (event: Event) => {
-    if (event.event_id) {
-      setTargetEventId(event.event_id)
-    }
-    if (event.trader_id && event.trader_id !== selectedIdRef.current) {
-      setSelectedId(event.trader_id)
-      selectedIdRef.current = event.trader_id
-      refreshSelected(event.trader_id)
-    }
     const matchedDecision = decisions.find(d => (event.event_id && d.event_id === event.event_id) || d.timestamp === event.timestamp || d.trader_id === event.trader_id)
     const matchedTrader = traders.find(t => t.trader_id === event.trader_id)
     setDrawerData({ event, decision: matchedDecision, trader: matchedTrader })
@@ -462,41 +454,20 @@ export default function App() {
   }
 
   const inspectDecision = (decision: Decision) => {
-    if (decision.event_id) {
-      setTargetEventId(decision.event_id)
-    }
-    if (decision.trader_id && decision.trader_id !== selectedIdRef.current) {
-      setSelectedId(decision.trader_id)
-      selectedIdRef.current = decision.trader_id
-      refreshSelected(decision.trader_id)
-    }
-    const matchedEvent = events.find(e => (decision.event_id && e.event_id === decision.event_id) || e.timestamp === decision.timestamp)
-    setDrawerData({ decision, event: matchedEvent, trader: selected })
+    const matchedEvent = events.find(e => e.timestamp === decision.timestamp)
+    setDrawerData({ decision, event: matchedEvent })
     setDrawerOpen(true)
   }
 
   const inspectTrader = (trader: Trader) => {
-    if (trader.trader_id && trader.trader_id !== selectedIdRef.current) {
-      setSelectedId(trader.trader_id)
-      selectedIdRef.current = trader.trader_id
-      refreshSelected(trader.trader_id)
-    }
     setDrawerData({ trader })
     setDrawerOpen(true)
   }
 
   const inspectCase = (c: Case) => {
-    if (c.trader_id && c.trader_id !== selectedIdRef.current) {
-      setSelectedId(c.trader_id)
-      selectedIdRef.current = c.trader_id
-      refreshSelected(c.trader_id)
-    }
     const matchedTrader = traders.find(t => t.trader_id === c.trader_id)
-    const matchedDecision = decisions.find(d => (c.case_id && d.case_id === c.case_id) || d.trader_id === c.trader_id)
-    const matchedEvent = events.find(e => (matchedDecision?.event_id && e.event_id === matchedDecision.event_id) || e.trader_id === c.trader_id)
-    if (matchedEvent?.event_id) {
-      setTargetEventId(matchedEvent.event_id)
-    }
+    const matchedDecision = decisions.find(d => d.trader_id === c.trader_id)
+    const matchedEvent = events.find(e => e.trader_id === c.trader_id)
     setDrawerData({ caseItem: c, trader: matchedTrader, decision: matchedDecision, event: matchedEvent })
     setDrawerOpen(true)
   }
@@ -875,22 +846,6 @@ export default function App() {
     return decisions.find(d => d.trader_id === selectedId) || (selected ? undefined : decisions[0])
   }, [decisions, selectedId, selected])
 
-  const targetEvent = useMemo(() => {
-    if (targetEventId) {
-      const match = events.find(e => e.event_id === targetEventId)
-      if (match) return match
-    }
-    return events.find(e => e.trader_id === selectedId) || events[0]
-  }, [events, targetEventId, selectedId])
-
-  const targetDecision = useMemo(() => {
-    if (targetEventId) {
-      const match = decisions.find(d => d.event_id === targetEventId)
-      if (match) return match
-    }
-    return latestDecision
-  }, [decisions, targetEventId, latestDecision])
-
   const populationStats = useMemo(() => {
     const total = traders.length
     const trusted = traders.filter(t => t.trust_score >= 70).length
@@ -1253,10 +1208,10 @@ export default function App() {
               {/* Signature Component: Why NETRA Decided This (7-Stage Causal Reasoning Chain) */}
               <ReasoningEvidenceChain
                 trader={selected}
-                decision={targetDecision || latestDecision}
-                latestEvent={targetEvent}
+                decision={latestDecision}
+                latestEvent={events[0]}
                 graph={graph}
-                onInspectEvidence={() => (targetDecision || latestDecision) && inspectDecision(targetDecision || latestDecision!)}
+                onInspectEvidence={() => latestDecision && inspectDecision(latestDecision)}
                 onOpenTopology={() => setView('RELATIONSHIP GRAPH')}
                 onNavigateToAudit={handleNavigateToAudit}
                 onNavigateToCase={(caseId) => {
