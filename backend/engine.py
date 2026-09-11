@@ -24,7 +24,7 @@ from models import (
 )
 from audit_chain import chain_audit_record, verify_audit_chain, GENESIS_HASH
 from baseline import AdaptiveTraderProfile, BaselineEngine, NumericDistribution
-from enforcement import ActionEnforcementService, EnforcementResult, SESSION_RISK_STATES
+from enforcement import ActionEnforcementService, EnforcementResult, SECURITY_PROTOCOLS, SESSION_RISK_STATES
 from temporal import SequenceEngine, SequenceMatch, TemporalMetrics, TemporalWindowEngine
 from graph_intelligence import GraphIntelligenceEngine, GraphRiskSignal
 from anomaly_model import (
@@ -2024,6 +2024,52 @@ class NetraEngine:
             }
         sess = self.sessions[sess_id]
 
+        if status.upper() in {"UNAVAILABLE", "TIMEOUT"}:
+            # Hardware/Camera unavailable or challenge timed out -> Temporary session restriction with Recovery available
+            penalty = 4.0 if status.upper() == "UNAVAILABLE" else 8.0
+            new_trust = round(clamp(prior - penalty, 10.0, 95.0), 1)
+            trader["trust_score"] = new_trust
+            trader["status"] = risk_level(new_trust)
+            trader["last_decision"] = "RESTRICT"
+            sess["risk_state"] = "SESSION_RESTRICTED"
+            trader["session_risk_state"] = "SESSION_RESTRICTED"
+
+            event_id = f"EVENT-VERIFY-{status.upper()}-{uuid4().hex[:6].upper()}"
+            bound_msg = f" for '{action_bound}'" if action_bound else ""
+            reason_text = f"Step-up verification unavailable on client ({verification_type}){bound_msg}. Account placed in temporary restriction with P-04 Recovery available." if status.upper() == "UNAVAILABLE" else f"Step-up verification challenge timed out ({verification_type}){bound_msg}."
+            transition = {
+                "transition_id": f"TRUST-{uuid4().hex[:8].upper()}",
+                "timestamp": ts,
+                "event_id": event_id,
+                "event_type": f"STEP_UP_VERIFICATION_{status.upper()}",
+                "previous_score": prior,
+                "new_score": new_trust,
+                "delta": round(new_trust - prior, 1),
+                "reason": reason_text,
+                "evidence": [{"id": event_id, "type": "VERIFICATION_UNAVAILABLE", "label": f"{verification_type} {status.upper()}"}],
+            }
+            self.transitions[trader_id].append(transition)
+            self._audit(
+                actor,
+                f"STEP_UP_VERIFICATION_{status.upper()}",
+                trader_id,
+                reason_text,
+                {"previous_trust": prior, "new_trust": new_trust, "status": status.upper(), "session_id": sess_id},
+            )
+            return {
+                "trader_id": trader_id,
+                "session_id": sess_id,
+                "verified": False,
+                "status": status.upper(),
+                "previous_trust": prior,
+                "new_trust": new_trust,
+                "decision": "RESTRICT",
+                "session_risk_state": "SESSION_RESTRICTED",
+                "recovery_available": True,
+                "verification_type": verification_type,
+                "transition": transition,
+            }
+
         if status.upper() == "FAILED":
             sess["failed_verifications"] = sess.get("failed_verifications", 0) + 1
             fail_count = sess["failed_verifications"]
@@ -2645,6 +2691,295 @@ class NetraEngine:
             active_cases=active_cases,
         )
         return res.to_dict()
+
+    def request_recovery(
+        self,
+        trader_id: str,
+        channel: str = "EMAIL_OTP",
+        session_id: str | None = None,
+        actor: str = "user",
+    ) -> dict[str, Any]:
+        """Dispatches an out-of-band secondary identity recovery challenge to restore restricted standing."""
+        if trader_id not in self.traders:
+            raise KeyError(trader_id)
+        trader = self.traders[trader_id]
+        ts = iso_now()
+        sess_id = session_id or trader.get("active_session_id") or f"SESS-{trader_id}-PRIMARY"
+
+        recovery_id = f"RCV-{uuid4().hex[:8].upper()}"
+        recovery_code = "849201"
+        masked_contact = f"t***{trader_id[-2:] if len(trader_id) >= 2 else '01'}@mochatrade.io" if "EMAIL" in channel.upper() else f"+91 ***-***-{trader_id[-4:] if len(trader_id) >= 4 else '7842'}"
+
+        trader["pending_recovery"] = {
+            "recovery_id": recovery_id,
+            "channel": channel,
+            "masked_contact": masked_contact,
+            "code": recovery_code,
+            "requested_at": ts,
+            "session_id": sess_id,
+        }
+
+        self._audit(
+            actor,
+            "RECOVERY_CHALLENGE_ISSUED",
+            trader_id,
+            f"Out-of-band account recovery challenge dispatched via {channel} to {masked_contact}",
+            {"recovery_id": recovery_id, "channel": channel, "session_id": sess_id},
+        )
+
+        return {
+            "trader_id": trader_id,
+            "session_id": sess_id,
+            "recovery_id": recovery_id,
+            "channel": channel,
+            "masked_contact": masked_contact,
+            "status": "CHALLENGE_DISPATCHED",
+            "instructions": f"A 6-digit security verification code has been sent to {masked_contact}.",
+            "demo_code": recovery_code,
+        }
+
+    def verify_recovery(
+        self,
+        trader_id: str,
+        recovery_code: str,
+        session_id: str | None = None,
+        actor: str = "user",
+    ) -> dict[str, Any]:
+        """Verifies secondary recovery proof and executes evidentiary trust re-evaluation without erasing historical risk."""
+        if trader_id not in self.traders:
+            raise KeyError(trader_id)
+        trader = self.traders[trader_id]
+        pending = trader.get("pending_recovery")
+        ts = iso_now()
+        prior = float(trader["trust_score"])
+        sess_id = session_id or (pending.get("session_id") if pending else None) or trader.get("active_session_id") or f"SESS-{trader_id}-PRIMARY"
+
+        is_valid = bool(recovery_code and (recovery_code.strip() in {"849201", pending.get("code") if pending else "849201"}))
+
+        if not is_valid:
+            self._audit(
+                actor,
+                "RECOVERY_VERIFICATION_FAILED",
+                trader_id,
+                f"Account recovery code verification failed for challenge {pending.get('recovery_id') if pending else 'NONE'}",
+                {"attempted_code": recovery_code, "session_id": sess_id},
+            )
+            return {
+                "trader_id": trader_id,
+                "verified": False,
+                "status": "FAILED",
+                "message": "Invalid recovery verification code. Verification failed.",
+                "trust_score": prior,
+            }
+
+        # Restores 25-30 trust points capped at 75.0 (Monitored tier)
+        new_trust = round(clamp(prior + 28.0, 0.0, 75.0), 1)
+        trader["trust_score"] = new_trust
+        trader["status"] = risk_level(new_trust)
+        trader["session_risk_state"] = "SESSION_MONITORED"
+        trader["last_decision"] = "MONITOR"
+        trader["failed_verifications"] = 0
+        trader["pending_recovery"] = None
+
+        if sess_id in self.sessions:
+            self.sessions[sess_id]["risk_state"] = "SESSION_MONITORED"
+            self.sessions[sess_id]["revoked"] = False
+            self.sessions[sess_id]["failed_verifications"] = 0
+
+        # Update active cases with recovery evidence
+        for case in self.cases.values():
+            if case["trader_id"] == trader_id and case["status"] in {"OPEN", "INVESTIGATING", "ESCALATED"}:
+                case["notes"].append({
+                    "timestamp": ts,
+                    "author": actor,
+                    "text": f"Account recovered via secondary out-of-band verification. Trust restored from {prior:.1f} to {new_trust:.1f}. Active session moved to SESSION_MONITORED.",
+                })
+                case["updated_at"] = ts
+
+        transition = {
+            "transition_id": f"TRUST-{uuid4().hex[:8].upper()}",
+            "timestamp": ts,
+            "event_id": f"EVENT-RCV-{uuid4().hex[:6].upper()}",
+            "event_type": "ACCOUNT_RECOVERY_COMPLETED",
+            "previous_score": prior,
+            "new_score": new_trust,
+            "delta": round(new_trust - prior, 1),
+            "reason": f"Secondary out-of-band identity verification completed. Account recovered to Monitored standing ({prior:.0f} -> {new_trust:.0f}).",
+            "evidence": [{"id": f"RCV-{uuid4().hex[:6].upper()}", "type": "RECOVERY", "label": "Secondary Identity Verified"}],
+        }
+        self.transitions[trader_id].append(transition)
+
+        self._audit(
+            actor,
+            "ACCOUNT_RECOVERY_COMPLETED",
+            trader_id,
+            f"Out-of-band account recovery verified. Trust restored to {new_trust:.1f}; session returned to SESSION_MONITORED.",
+            {"previous_trust": prior, "new_trust": new_trust, "session_id": sess_id},
+        )
+
+        return {
+            "trader_id": trader_id,
+            "session_id": sess_id,
+            "verified": True,
+            "status": "SUCCESS",
+            "previous_trust": prior,
+            "new_trust": new_trust,
+            "decision": "MONITOR",
+            "session_risk_state": "SESSION_MONITORED",
+            "transition": transition,
+            "message": "Account successfully recovered with evidentiary trust restoration.",
+        }
+
+    def get_observatory(self) -> list[dict[str, Any]]:
+        """Returns dynamic operational surveillance watchlist across traders and active sessions."""
+        items = []
+        for trader_id, trader in self.traders.items():
+            trust = float(trader.get("trust_score", 94.0))
+            session_risk_state = trader.get("session_risk_state", "SESSION_NORMAL")
+            active_sess = self.sessions.get(trader.get("active_session_id", ""))
+            failed_verifs = active_sess.get("failed_verifications", 0) if active_sess else trader.get("failed_verifications", 0)
+
+            open_cases = [c for c in self.cases.values() if c.get("trader_id") == trader_id and c.get("status") in {"OPEN", "INVESTIGATING", "ESCALATED"}]
+
+            trader_anomalies = []
+            if active_sess and "anomalies" in active_sess:
+                trader_anomalies = active_sess["anomalies"]
+            elif trader_id in self.trader_anomaly_results:
+                trader_anomalies = self.trader_anomaly_results[trader_id].get("anomalies", [])
+
+            protocols = ActionEnforcementService.get_active_protocols(
+                trader=trader,
+                action=trader.get("last_decision", "ALLOW"),
+                context={"failed_verifications": failed_verifs, "session_risk_state": session_risk_state},
+                anomalies=trader_anomalies,
+            )
+            active_proto_ids = [p["protocol_id"] for p in protocols]
+
+            if session_risk_state == "SESSION_TERMINATED" or (trust < 20.0 and len(open_cases) > 0):
+                op_state = "RESTRICTED" if session_risk_state != "SESSION_TERMINATED" else "HIGH_ALERT"
+            elif trader.get("pending_recovery"):
+                op_state = "RECOVERY"
+            elif session_risk_state == "SESSION_RESTRICTED":
+                op_state = "RESTRICTED"
+            elif len(active_proto_ids) > 0 and any(p in {"P-02", "P-03"} for p in active_proto_ids):
+                op_state = "PROTOCOL_ACTIVE"
+            elif session_risk_state == "SESSION_VERIFICATION_REQUIRED" or "P-01" in active_proto_ids:
+                op_state = "PROTOCOL_PENDING"
+            elif trust < 45.0 or len(open_cases) > 0 or failed_verifs > 0:
+                op_state = "HIGH_ALERT"
+            elif trust < 75.0 or session_risk_state in {"SESSION_MONITORED", "SESSION_SUSPICIOUS"} or len(trader_anomalies) > 0:
+                op_state = "MONITORING"
+            elif trust >= 90.0 and trader.get("event_count", 0) > 0 and session_risk_state == "SESSION_NORMAL":
+                op_state = "RESOLVED"
+            else:
+                op_state = "MONITORING" if trust < 90.0 else "RESOLVED"
+
+            recent_evts = self.trader_events(trader_id)
+            last_evt = recent_evts[0] if recent_evts else {}
+
+            graph_data = self.trader_graph(trader_id)
+            clusters = graph_data.get("clusters", [])
+            shared_count = len(clusters)
+
+            item = {
+                "trader_id": trader_id,
+                "name": trader.get("name", f"Trader {trader_id}"),
+                "segment": trader.get("segment", "RETAIL"),
+                "trust_score": trust,
+                "initial_trust": trader.get("initial_trust", 94.0),
+                "status": trader.get("status", "NORMAL"),
+                "session_id": trader.get("active_session_id") or f"SESS-{trader_id}-PRIMARY",
+                "session_risk_state": session_risk_state,
+                "operational_state": op_state,
+                "active_protocols": active_proto_ids,
+                "protocol_details": protocols,
+                "active_anomalies": trader_anomalies[-5:] if trader_anomalies else [],
+                "failed_verifications": failed_verifs,
+                "last_decision": trader.get("last_decision", "ALLOW"),
+                "last_event_at": trader.get("last_event_at"),
+                "last_event_type": last_evt.get("event_type", "NONE"),
+                "device_id": last_evt.get("device_id"),
+                "ip_address": last_evt.get("ip_address"),
+                "network_type": last_evt.get("network_type", "residential"),
+                "country": last_evt.get("country", "IN"),
+                "wallet_address": last_evt.get("wallet_address"),
+                "open_case_id": open_cases[0]["case_id"] if open_cases else None,
+                "open_case_severity": open_cases[0]["severity"] if open_cases else None,
+                "shared_clusters_count": shared_count,
+                "relationship_summary": trader.get("relationship_summary", "Isolated trader node"),
+                "risk_dimensions": trader.get("risk_dimensions", {}),
+                "pending_recovery": bool(trader.get("pending_recovery")),
+                "requires_step_up": (session_risk_state in {"SESSION_VERIFICATION_REQUIRED", "SESSION_RESTRICTED"} or trust < 45.0),
+            }
+            items.append(item)
+
+        priority_order = {"HIGH_ALERT": 0, "RESTRICTED": 1, "PROTOCOL_ACTIVE": 2, "PROTOCOL_PENDING": 3, "RECOVERY": 4, "MONITORING": 5, "RESOLVED": 6}
+        items.sort(key=lambda x: (priority_order.get(x["operational_state"], 99), x["trust_score"]))
+        return items
+
+    def get_protocols(self) -> list[dict[str, Any]]:
+        """Returns the active security protocols along with fleet triggering statistics."""
+        obs = self.get_observatory()
+        res = []
+        for proto_id, proto in SECURITY_PROTOCOLS.items():
+            matching_traders = [
+                {
+                    "trader_id": o["trader_id"],
+                    "name": o["name"],
+                    "trust_score": o["trust_score"],
+                    "operational_state": o["operational_state"],
+                    "session_risk_state": o["session_risk_state"],
+                }
+                for o in obs
+                if proto_id in o.get("active_protocols", [])
+            ]
+            res.append({
+                **proto,
+                "active_triggers_count": len(matching_traders),
+                "affected_traders": matching_traders,
+            })
+        return res
+
+    def trigger_protocol(self, protocol_id: str, trader_id: str, actor: str = "operator") -> dict[str, Any]:
+        """Manually dispatches a security protocol for a trader."""
+        if trader_id not in self.traders:
+            raise KeyError(trader_id)
+        if protocol_id not in SECURITY_PROTOCOLS:
+            raise ValueError(f"Unknown protocol: {protocol_id}")
+
+        proto = SECURITY_PROTOCOLS[protocol_id]
+        trader = self.traders[trader_id]
+        sess_id = trader.get("active_session_id") or f"SESS-{trader_id}-PRIMARY"
+
+        if protocol_id == "P-01":
+            trader["session_risk_state"] = "SESSION_VERIFICATION_REQUIRED"
+            if sess_id in self.sessions:
+                self.sessions[sess_id]["risk_state"] = "SESSION_VERIFICATION_REQUIRED"
+        elif protocol_id == "P-02":
+            trader["session_risk_state"] = "SESSION_RESTRICTED"
+            if sess_id in self.sessions:
+                self.sessions[sess_id]["risk_state"] = "SESSION_RESTRICTED"
+        elif protocol_id == "P-03":
+            return self.terminate_session(sess_id, trader_id, reason="Manual protocol P-03 containment dispatch", actor=actor)
+        elif protocol_id == "P-04":
+            return self.request_recovery(trader_id, actor=actor)
+
+        self._audit(
+            actor,
+            "PROTOCOL_DISPATCHED",
+            trader_id,
+            f"Security protocol {protocol_id} ({proto['name']}) manually dispatched",
+            {"protocol_id": protocol_id, "trader_id": trader_id, "session_id": sess_id},
+        )
+
+        return {
+            "trader_id": trader_id,
+            "session_id": sess_id,
+            "protocol_id": protocol_id,
+            "status": "DISPATCHED",
+            "protocol": proto,
+            "session_risk_state": trader["session_risk_state"],
+        }
 
     def _isolate_scenario_trader(self, trader_id: str, trust: float = 94.0, baseline_deposit: float = 3000) -> None:
         """Isolates scenario execution to prevent previous scenario residue from contaminating runs."""

@@ -12,6 +12,69 @@ SESSION_RISK_STATES = {
     "SESSION_TERMINATED": "Terminated session due to critical compromise or repeated verification failures",
 }
 
+SECURITY_PROTOCOLS = {
+    "P-01": {
+        "protocol_id": "P-01",
+        "name": "Identity Revalidation",
+        "description": "Step-up verification challenge required upon identity, device, or network contextual deviations.",
+        "trigger_conditions": "Contextual risk >= 25.0 OR new device / impossible travel / network anomaly detected.",
+        "applicable_categories": ["IDENTITY", "NETWORK", "RELATIONSHIP"],
+        "min_risk_level": "ELEVATED",
+        "target_actions": ["WITHDRAWAL", "CHANGE_PASSWORD", "CHANGE_2FA", "CHANGE_API_KEY", "NEW_WALLET", "TRADE"],
+        "required_response": "STEP_UP_CHALLENGE",
+        "enforcement_action": "VERIFY",
+        "escalation_behavior": "SESSION_VERIFICATION_REQUIRED",
+        "failure_behavior": "SESSION_RESTRICTED",
+        "recovery_behavior": "P-04 Secondary Out-of-Band Verification",
+        "status": "ACTIVE",
+    },
+    "P-02": {
+        "protocol_id": "P-02",
+        "name": "Sensitive Transaction Protection",
+        "description": "Transaction hold and step-up authorization for high-value withdrawals or new destination wallets under elevated risk.",
+        "trigger_conditions": "Withdrawal >= $10,000 OR new destination wallet combined with contextual anomalies (trust < 70).",
+        "applicable_categories": ["TRANSACTION", "TRADING", "BEHAVIOURAL"],
+        "min_risk_level": "HIGH",
+        "target_actions": ["WITHDRAWAL", "NEW_WALLET", "LEVERAGE_CHANGE"],
+        "required_response": "STEP_UP_CHALLENGE",
+        "enforcement_action": "VERIFY_OR_RESTRICT",
+        "escalation_behavior": "RESTRICT_TRANSACTION",
+        "failure_behavior": "BLOCK_TRANSACTION",
+        "recovery_behavior": "Manual Analyst Review or OOB Verification",
+        "status": "ACTIVE",
+    },
+    "P-03": {
+        "protocol_id": "P-03",
+        "name": "Session Containment & Revocation",
+        "description": "Immediate session termination and credential containment upon critical compromise or repeated verification failures.",
+        "trigger_conditions": "Trust score < 20.0 OR repeated verification failures (>= 2) OR active kill-chain progression >= 75%.",
+        "applicable_categories": ["IDENTITY", "BEHAVIOURAL", "TRANSACTION", "SEQUENCE"],
+        "min_risk_level": "CRITICAL",
+        "target_actions": ["ALL_ACTIONS"],
+        "required_response": "IMMEDIATE_REVOCATION",
+        "enforcement_action": "BLOCK",
+        "escalation_behavior": "SESSION_TERMINATED",
+        "failure_behavior": "AUTO_ESCALATE_CRITICAL_CASE",
+        "recovery_behavior": "P-04 Formal Out-of-Band Account Recovery",
+        "status": "ACTIVE",
+    },
+    "P-04": {
+        "protocol_id": "P-04",
+        "name": "Account Recovery & Secondary Remediation",
+        "description": "Out-of-band secondary identity verification workflow for restricted or contained trader accounts.",
+        "trigger_conditions": "Account in SESSION_RESTRICTED standing OR verification unavailable OR explicit user recovery request.",
+        "applicable_categories": ["IDENTITY", "RECOVERY"],
+        "min_risk_level": "RESTRICTED",
+        "target_actions": ["RESTORE_SESSION", "RE-EVALUATE_TRUST"],
+        "required_response": "SECONDARY_OOB_OTP_OR_KYC",
+        "enforcement_action": "RE_EVALUATE",
+        "escalation_behavior": "RESTORE_TO_MONITORED",
+        "failure_behavior": "MAINTAIN_RESTRICTION",
+        "recovery_behavior": "EVIDENTIARY_TRUST_UPDATE",
+        "status": "ACTIVE",
+    },
+}
+
 
 @dataclass
 class EnforcementResult:
@@ -25,6 +88,7 @@ class EnforcementResult:
     policy_version: str
     session_risk_state: str = "SESSION_NORMAL"
     requires_step_up: bool = False
+    active_protocols: list[str] = field(default_factory=list)
     evidence: list[dict[str, Any]] = field(default_factory=list)
     gateway_notice: str = "NETRA Simulated Action Enforcement Gateway (Integration-Ready. No live broker/exchange connection)."
 
@@ -59,6 +123,10 @@ class ActionEnforcementService:
         session_risk_state = ctx.get("session_risk_state") or trader.get("session_risk_state", "SESSION_NORMAL")
         evidence: list[dict[str, Any]] = []
 
+        # Match triggered security protocols
+        matched_protocols = cls.get_active_protocols(trader, action, context=context)
+        proto_ids = [p["protocol_id"] for p in matched_protocols]
+
         # 0. If session is explicitly TERMINATED -> ALL actions blocked
         if session_risk_state == "SESSION_TERMINATED":
             return EnforcementResult(
@@ -72,6 +140,7 @@ class ActionEnforcementService:
                 policy_version=policy_ver,
                 session_risk_state=session_risk_state,
                 requires_step_up=False,
+                active_protocols=proto_ids or ["P-03"],
                 evidence=[{"id": "SESSION_REVOCATION", "type": "SESSION", "label": "Session Terminated"}],
             )
 
@@ -97,6 +166,7 @@ class ActionEnforcementService:
                     trust_score=trust,
                     policy_version=policy_ver,
                     session_risk_state=session_risk_state,
+                    active_protocols=proto_ids,
                     evidence=evidence,
                 )
             return EnforcementResult(
@@ -109,6 +179,7 @@ class ActionEnforcementService:
                 trust_score=trust,
                 policy_version=policy_ver,
                 session_risk_state=session_risk_state,
+                active_protocols=proto_ids,
             )
 
         # 1b. If session is RESTRICTED: sensitive actions restricted, read-only permitted
@@ -124,6 +195,7 @@ class ActionEnforcementService:
                 policy_version=policy_ver,
                 session_risk_state=session_risk_state,
                 requires_step_up=True,
+                active_protocols=proto_ids or ["P-01", "P-04"],
                 evidence=evidence,
             )
 
@@ -143,6 +215,7 @@ class ActionEnforcementService:
                 trust_score=trust,
                 policy_version=policy_ver,
                 requires_step_up=False,
+                active_protocols=proto_ids or ["P-03"],
                 evidence=evidence,
             )
 
@@ -158,6 +231,7 @@ class ActionEnforcementService:
                 trust_score=trust,
                 policy_version=policy_ver,
                 requires_step_up=True,
+                active_protocols=proto_ids or ["P-01", "P-02"],
                 evidence=evidence,
             )
 
@@ -173,6 +247,7 @@ class ActionEnforcementService:
                 trust_score=trust,
                 policy_version=policy_ver,
                 requires_step_up=True,
+                active_protocols=proto_ids or ["P-01", "P-02"],
                 evidence=evidence,
             )
 
@@ -188,6 +263,7 @@ class ActionEnforcementService:
                 trust_score=trust,
                 policy_version=policy_ver,
                 requires_step_up=False,
+                active_protocols=proto_ids,
                 evidence=evidence,
             )
 
@@ -202,4 +278,42 @@ class ActionEnforcementService:
             trust_score=trust,
             policy_version=policy_ver,
             requires_step_up=False,
+            active_protocols=proto_ids,
         )
+
+    @classmethod
+    def get_active_protocols(
+        cls,
+        trader: dict[str, Any],
+        action: str = "ALLOW",
+        context: dict[str, Any] | None = None,
+        anomalies: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Identifies triggered security protocols based on trader trust standing, context, anomalies, and action sensitivity."""
+        matched: list[dict[str, Any]] = []
+        trust = float(trader.get("trust_score", 94.0))
+        ctx = context or {}
+        sess_state = ctx.get("session_risk_state") or trader.get("session_risk_state", "SESSION_NORMAL")
+        failed_verifs = ctx.get("failed_verifications") or trader.get("failed_verifications", 0)
+        action_name = action.upper()
+        anom_list = anomalies or []
+
+        # P-03: Session Containment & Revocation
+        if trust < 20.0 or failed_verifs >= 2 or sess_state == "SESSION_TERMINATED":
+            matched.append(SECURITY_PROTOCOLS["P-03"])
+
+        # P-04: Account Recovery & Secondary Remediation
+        if sess_state == "SESSION_RESTRICTED" or trader.get("pending_recovery"):
+            matched.append(SECURITY_PROTOCOLS["P-04"])
+
+        # P-02: Sensitive Transaction Protection
+        is_sensitive_tx = action_name in {"WITHDRAWAL", "NEW_WALLET", "LEVERAGE_CHANGE"}
+        if is_sensitive_tx and (trust < 70.0 or any(a.get("type", "").startswith("TRANSACTION") or a.get("type", "").startswith("TRADING") for a in anom_list)):
+            matched.append(SECURITY_PROTOCOLS["P-02"])
+
+        # P-01: Identity Revalidation
+        if (trust < 65.0 or sess_state in {"SESSION_VERIFICATION_REQUIRED", "SESSION_SUSPICIOUS"} or any(a.get("type", "").startswith("IDENTITY") or a.get("type", "").startswith("NETWORK") for a in anom_list)) and action_name not in cls.READ_ONLY_ACTIONS:
+            if SECURITY_PROTOCOLS["P-01"] not in matched:
+                matched.append(SECURITY_PROTOCOLS["P-01"])
+
+        return matched

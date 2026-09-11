@@ -12,14 +12,21 @@ import { PolicyMatrixSimulator } from './components/PolicyMatrixSimulator'
 import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
 import { ScenarioAttackReplay } from './components/ScenarioAttackReplay'
 import { TrustTrajectoryHero } from './components/TrustTrajectoryHero'
-import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, Policy, RiskEventItem, StreamStatus, Trader, UserRole } from './types'
+import { ObservatoryWatchlist } from './components/ObservatoryWatchlist'
+import { SecurityProtocolCenter } from './components/SecurityProtocolCenter'
+import { ClientActivityPresentation } from './components/ClientActivityPresentation'
+import { StepUpVerificationModal } from './components/StepUpVerificationModal'
+import { AccountRecoveryModal } from './components/AccountRecoveryModal'
+import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, ObservatoryRecord, Policy, RecoveryRequestResponse, RiskEventItem, SecurityProtocol, StreamStatus, Trader, UserRole } from './types'
 
 type View =
   | 'OVERVIEW'
   | 'LIVE MONITOR'
+  | 'OBSERVATORY'
   | 'TRADERS'
   | 'RISK EVENTS'
   | 'RELATIONSHIP GRAPH'
+  | 'PROTOCOLS'
   | 'CASES'
   | 'POLICIES'
   | 'SIMULATOR'
@@ -29,14 +36,16 @@ type View =
 const navItems: { id: View; code: string; label: string }[] = [
   { id: 'OVERVIEW', code: '01', label: 'Overview' },
   { id: 'LIVE MONITOR', code: '02', label: 'Live Monitor' },
-  { id: 'TRADERS', code: '03', label: 'Traders' },
-  { id: 'RISK EVENTS', code: '04', label: 'Risk Events' },
-  { id: 'RELATIONSHIP GRAPH', code: '05', label: 'Topology Graph' },
-  { id: 'CASES', code: '06', label: 'Cases & Triage' },
-  { id: 'POLICIES', code: '07', label: 'Policy Matrix' },
-  { id: 'SIMULATOR', code: '08', label: 'Scenario Lab' },
-  { id: 'AUDIT', code: '09', label: 'Audit Vault' },
-  { id: 'ANALYTICS', code: '10', label: 'Analytics' },
+  { id: 'OBSERVATORY', code: '03', label: 'Observatory' },
+  { id: 'TRADERS', code: '04', label: 'Traders' },
+  { id: 'RISK EVENTS', code: '05', label: 'Risk Events' },
+  { id: 'RELATIONSHIP GRAPH', code: '06', label: 'Topology Graph' },
+  { id: 'PROTOCOLS', code: '07', label: 'Protocols' },
+  { id: 'CASES', code: '08', label: 'Cases & Triage' },
+  { id: 'POLICIES', code: '09', label: 'Policy Matrix' },
+  { id: 'SIMULATOR', code: '10', label: 'Scenario Lab' },
+  { id: 'AUDIT', code: '11', label: 'Audit Vault' },
+  { id: 'ANALYTICS', code: '12', label: 'Analytics' },
 ]
 
 const riskLabels: Record<string, string> = {
@@ -101,6 +110,14 @@ export default function App() {
   const [running, setRunning] = useState<string | null>(null)
   const [nodeInfo, setNodeInfo] = useState('')
   const [cmdOpen, setCmdOpen] = useState(false)
+
+  // Observatory & Security Protocols State
+  const [observatory, setObservatory] = useState<ObservatoryRecord[]>([])
+  const [protocols, setProtocols] = useState<SecurityProtocol[]>([])
+  const [stepUpModalOpen, setStepUpModalOpen] = useState(false)
+  const [stepUpTraderId, setStepUpTraderId] = useState('7842')
+  const [recoveryModalOpen, setRecoveryModalOpen] = useState(false)
+  const [recoveryTraderId, setRecoveryTraderId] = useState('7842')
 
   // Day 4 Multi-Trader Intelligence State
   const [riskEvents, setRiskEvents] = useState<RiskEventItem[]>([])
@@ -190,7 +207,7 @@ export default function App() {
 
   const refreshAll = useCallback(async () => {
     try {
-      const [nextTraders, nextAnalytics, nextCases, nextAudit, nextPolicy, nextDecisions, nextEvents, nextRiskEvents, nextSysGraph] = await Promise.all([
+      const [nextTraders, nextAnalytics, nextCases, nextAudit, nextPolicy, nextDecisions, nextEvents, nextRiskEvents, nextSysGraph, nextObs, nextProtos] = await Promise.all([
         api.get<Trader[]>('/traders'),
         api.get<Analytics>('/analytics'),
         api.get<Case[]>('/cases'),
@@ -200,6 +217,8 @@ export default function App() {
         api.get<Event[]>('/events'),
         api.get<RiskEventItem[]>('/risk-events'),
         api.get<Graph>('/graph/system'),
+        api.get<ObservatoryRecord[]>('/observatory').catch(() => []),
+        api.get<SecurityProtocol[]>('/protocols').catch(() => []),
       ])
       setTraders(nextTraders)
       setAnalytics(nextAnalytics)
@@ -210,6 +229,8 @@ export default function App() {
       setEvents(nextEvents)
       setRiskEvents(nextRiskEvents)
       setSystemGraph(nextSysGraph)
+      setObservatory(nextObs)
+      setProtocols(nextProtos)
       await refreshSelected(selectedIdRef.current)
     } catch (error: any) {
       const detail = error?.detail || error?.message || 'Connection error'
@@ -512,15 +533,124 @@ export default function App() {
     }
   }
 
-  const stepUpVerify = async (traderId: string) => {
+  const handleOpenStepUpModal = (traderId: string) => {
+    setStepUpTraderId(traderId)
+    setStepUpModalOpen(true)
+  }
+
+  const handleOpenRecoveryModal = (traderId: string) => {
+    setRecoveryTraderId(traderId)
+    setRecoveryModalOpen(true)
+  }
+
+  const handleStepUpVerify = async (
+    traderId: string,
+    verificationType: string = 'PASSKEY',
+    status: 'SUCCESS' | 'FAILED' | 'UNAVAILABLE' | 'TIMEOUT' = 'SUCCESS',
+  ) => {
+    soundManager.playEventTick()
     try {
-      soundManager.playEventTick()
-      const res = await api.send<any>('POST', `/traders/${traderId}/step-up`, { verification_type: '2FA_BIOMETRIC' })
-      soundManager.playSuccess()
-      setNotice(`STEP-UP VERIFICATION VERIFIED FOR #${traderId}. TRUST RESTORED TO ${res.new_trust}/100.`)
+      const res = await api.send<any>('POST', '/verify/step-up', {
+        trader_id: traderId,
+        verification_type: verificationType,
+        status: status,
+      })
+      if (status === 'SUCCESS') {
+        soundManager.playSuccess()
+        setNotice(`IDENTITY VERIFIED: #${traderId} via ${verificationType}. Trust re-evaluated to ${res.new_trust}/100.`)
+      } else {
+        soundManager.playThreatAlert()
+        setNotice(`STEP-UP CHALLENGE [${status}]: #${traderId}. Session set to ${res.session_risk_state}.`)
+      }
       await refreshAll()
     } catch (err: any) {
-      setNotice(err.message || 'Verification rejected.')
+      setNotice(err.message || 'Verification challenge rejected.')
+      throw err
+    }
+  }
+
+  const stepUpVerify = async (traderId: string) => {
+    handleOpenStepUpModal(traderId)
+  }
+
+  const handleRequestRecovery = async (traderId: string, channel: string): Promise<RecoveryRequestResponse> => {
+    soundManager.playEventTick()
+    try {
+      const res = await api.send<RecoveryRequestResponse>('POST', '/recovery/request', {
+        trader_id: traderId,
+        channel: channel,
+      })
+      setNotice(`RECOVERY CHALLENGE DISPATCHED: #${traderId} via ${channel} (${res.masked_contact}).`)
+      await refreshAll()
+      return res
+    } catch (err: any) {
+      setNotice(err.message || 'Recovery request rejected.')
+      throw err
+    }
+  }
+
+  const handleVerifyRecovery = async (traderId: string, code: string): Promise<void> => {
+    soundManager.playEventTick()
+    try {
+      const res = await api.send<any>('POST', '/recovery/verify', {
+        trader_id: traderId,
+        recovery_code: code,
+      })
+      if (res.verified) {
+        soundManager.playSuccess()
+        setNotice(`ACCOUNT RECOVERED: #${traderId}. Evidentiary trust restored to ${res.new_trust}/100.`)
+      } else {
+        soundManager.playThreatAlert()
+        setNotice(`RECOVERY FAILED: #${traderId}. Invalid proof code.`)
+      }
+      await refreshAll()
+    } catch (err: any) {
+      setNotice(err.message || 'Recovery verification rejected.')
+      throw err
+    }
+  }
+
+  const handleTriggerProtocol = async (protocolId: string, traderId: string) => {
+    soundManager.playEventTick()
+    try {
+      const res = await api.send<any>('POST', `/protocols/${protocolId}/trigger`, {
+        trader_id: traderId,
+      })
+      soundManager.playSuccess()
+      setNotice(`PROTOCOL ${protocolId} DISPATCHED FOR #${traderId} -> ${res.session_risk_state || res.status}`)
+      await refreshAll()
+    } catch (err: any) {
+      setNotice(err.message || 'Protocol dispatch failed.')
+    }
+  }
+
+  const handleInjectSyntheticEvent = async (eventType: string, amount?: number) => {
+    const targetId = selectedId || '7842'
+    const payload: any = {
+      trader_id: targetId,
+      event_type: eventType,
+      source: 'client-trading-app',
+    }
+    if (amount) payload.amount = amount
+    if (eventType === 'NEW_DEVICE') payload.device_id = `DEV-CLIENT-${Date.now().toString().slice(-4)}`
+    if (eventType === 'IP_CHANGE') {
+      payload.ip_address = '198.18.0.42'
+      payload.network_type = 'datacenter'
+    }
+    if (eventType === 'LEVERAGE_CHANGE') payload.leverage = amount || 50
+    if (eventType === 'WITHDRAWAL') {
+      payload.amount = amount || 25000
+      payload.wallet_address = 'WALLET-CLIENT-DEST'
+    }
+
+    try {
+      soundManager.playEventTick()
+      const res = await api.send<any>('POST', '/events', payload)
+      soundManager.playSuccess()
+      setNotice(`CLIENT TELEMETRY INGESTED: ${eventType} for #${targetId} -> Decision: ${res.decision?.decision || 'PROCESSED'}`)
+      await refreshAll()
+    } catch (err: any) {
+      setNotice(err.message || 'Client event ingestion rejected.')
     }
   }
 
@@ -1172,6 +1302,13 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Client Platform Activity Gateway Presentation */}
+              <ClientActivityPresentation
+                latestEvents={events}
+                selectedTrader={selected}
+                onInjectSyntheticEvent={handleInjectSyntheticEvent}
+              />
+
               {/* Primary Intelligence Area: Hero Trajectory + Persistent Decision Gateway */}
               <div className="grid-12">
                 {/* Left 8 Cols: Continuous Trust Trajectory Hero */}
@@ -1376,6 +1513,29 @@ export default function App() {
               actionEvalResult={actionEvalResult}
               onNavigateToAudit={handleNavigateToAudit}
               targetEventId={targetEventId}
+            />
+          )}
+
+          {/* VIEW: OBSERVATORY */}
+          {view === 'OBSERVATORY' && (
+            <ObservatoryWatchlist
+              records={observatory}
+              protocols={protocols}
+              selectedId={selectedId}
+              onSelectTrader={id => {
+                setSelectedId(id)
+                refreshSelected(id)
+              }}
+              onOpenStepUpModal={handleOpenStepUpModal}
+              onOpenRecoveryModal={handleOpenRecoveryModal}
+              onTriggerProtocol={handleTriggerProtocol}
+              onNavigateToView={(v, id) => {
+                if (id) {
+                  setSelectedId(id)
+                  refreshSelected(id)
+                }
+                setView(v)
+              }}
             />
           )}
 
@@ -2298,6 +2458,25 @@ export default function App() {
             </div>
           )}
 
+          {/* VIEW: PROTOCOLS */}
+          {view === 'PROTOCOLS' && (
+            <SecurityProtocolCenter
+              protocols={protocols}
+              onTriggerProtocol={handleTriggerProtocol}
+              onSelectTrader={id => {
+                setSelectedId(id)
+                refreshSelected(id)
+              }}
+              onNavigateToView={(v, id) => {
+                if (id) {
+                  setSelectedId(id)
+                  refreshSelected(id)
+                }
+                setView(v)
+              }}
+            />
+          )}
+
           {/* VIEW: CASES & TRIAGE */}
           {view === 'CASES' && (
             <ForensicCaseWorkbench
@@ -2666,6 +2845,25 @@ export default function App() {
         onOpenTrader={goTrader}
         onNavigateToAudit={handleNavigateToAudit}
       />
+
+      {/* Step-Up Identity Verification Modal */}
+      {stepUpModalOpen && (
+        <StepUpVerificationModal
+          trader={traders.find(t => t.trader_id === stepUpTraderId) || selected}
+          onClose={() => setStepUpModalOpen(false)}
+          onVerify={handleStepUpVerify}
+        />
+      )}
+
+      {/* Out-of-Band Account Recovery Modal */}
+      {recoveryModalOpen && (
+        <AccountRecoveryModal
+          trader={traders.find(t => t.trader_id === recoveryTraderId) || selected}
+          onClose={() => setRecoveryModalOpen(false)}
+          onRequestRecovery={handleRequestRecovery}
+          onVerifyRecovery={handleVerifyRecovery}
+        />
+      )}
     </div>
   )
 }

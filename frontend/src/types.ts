@@ -112,6 +112,9 @@ export type Trader = {
     transaction_velocity_per_hour?: number
   }
   risk_dimensions?: Record<string, number>
+  session_risk_state?: string
+  failed_verifications?: number
+  pending_recovery?: any
   timeline?: Transition[]
   recent_events?: Event[]
 }
@@ -305,4 +308,93 @@ export type ActionEvaluationResult = {
   policy_version: string
   evidence: any[]
   restriction_status?: string
+  active_protocols?: string[]
+}
+
+export type ObservatoryOperationalState =
+  | 'HIGH_ALERT'
+  | 'RESTRICTED'
+  | 'PROTOCOL_ACTIVE'
+  | 'PROTOCOL_PENDING'
+  | 'RECOVERY'
+  | 'MONITORING'
+  | 'RESOLVED'
+
+export type ObservatoryRecord = {
+  trader_id: string
+  name: string
+  segment: string
+  trust_score: number
+  initial_trust: number
+  status: string
+  session_id: string
+  session_risk_state: string
+  operational_state: ObservatoryOperationalState
+  active_protocols: string[]
+  protocol_details: SecurityProtocol[]
+  active_anomalies: any[]
+  failed_verifications: number
+  last_decision: string
+  last_event_at?: string
+  last_event_type?: string
+  device_id?: string
+  ip_address?: string
+  network_type?: string
+  country?: string
+  wallet_address?: string
+  open_case_id?: string | null
+  open_case_severity?: string | null
+  shared_clusters_count: number
+  relationship_summary: string
+  risk_dimensions: Record<string, number>
+  pending_recovery: boolean
+  requires_step_up: boolean
+}
+
+export type SecurityProtocol = {
+  protocol_id: string
+  name: string
+  description: string
+  trigger_conditions: string
+  applicable_categories: string[]
+  min_risk_level: string
+  target_actions: string[]
+  required_response: string
+  enforcement_action: string
+  escalation_behavior: string
+  failure_behavior: string
+  recovery_behavior: string
+  status: string
+  active_triggers_count?: number
+  affected_traders?: {
+    trader_id: string
+    name: string
+    trust_score: number
+    operational_state: string
+    session_risk_state: string
+  }[]
+}
+
+export type RecoveryRequestResponse = {
+  trader_id: string
+  session_id: string
+  recovery_id: string
+  channel: string
+  masked_contact: string
+  status: string
+  instructions: string
+  demo_code: string
+}
+
+export type RecoveryVerifyResponse = {
+  trader_id: string
+  session_id: string
+  verified: boolean
+  status: string
+  previous_trust: number
+  new_trust: number
+  decision: string
+  session_risk_state: string
+  transition?: any
+  message: string
 }

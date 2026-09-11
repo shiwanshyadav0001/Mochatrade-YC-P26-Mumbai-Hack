@@ -102,7 +102,23 @@ class StepUpVerificationInput(BaseModel):
     verification_type: Literal["PASSKEY", "TOTP", "HARDWARE_KEY", "VIDEO_KYC", "SMS_OTP", "2FA_BIOMETRIC"] = "PASSKEY"
     session_id: str | None = None
     action_bound: str | None = None
-    status: Literal["SUCCESS", "FAILED"] = "SUCCESS"
+    status: Literal["SUCCESS", "FAILED", "UNAVAILABLE", "TIMEOUT"] = "SUCCESS"
+
+
+class RecoveryRequestInput(BaseModel):
+    trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
+    channel: Literal["EMAIL_OTP", "SMS_OTP", "SECONDARY_KYC"] = "EMAIL_OTP"
+    session_id: str | None = None
+
+
+class RecoveryVerifyInput(BaseModel):
+    trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
+    recovery_code: str = Field(min_length=1, max_length=32)
+    session_id: str | None = None
+
+
+class ProtocolTriggerInput(BaseModel):
+    trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
 
 
 class TerminateSessionInput(BaseModel):
@@ -507,6 +523,73 @@ async def reset_trader_baseline_endpoint(
         raise HTTPException(404, "Trader not found")
 
 
+@app.get("/api/observatory")
+def get_observatory_endpoint(_: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
+    """Returns real-time operational surveillance watchlist across traders and active sessions."""
+    return engine.get_observatory()
+
+
+@app.get("/api/protocols")
+def get_protocols_endpoint(_: dict[str, str] = Depends(get_current_actor)) -> list[dict[str, Any]]:
+    """Returns active security protocols and fleet trigger counts."""
+    return engine.get_protocols()
+
+
+@app.post("/api/protocols/{protocol_id}/trigger")
+async def trigger_protocol_endpoint(
+    protocol_id: str,
+    payload: ProtocolTriggerInput,
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST"})),
+) -> dict[str, Any]:
+    try:
+        res = engine.trigger_protocol(protocol_id=protocol_id, trader_id=payload.trader_id, actor=actor["actor_id"])
+        await broadcast("PROTOCOL_TRIGGERED", res)
+        await broadcast("OBSERVATORY_UPDATED", {"trader_id": payload.trader_id, "protocol_id": protocol_id})
+        await broadcast("RISK_UPDATED", {"trader_id": payload.trader_id, "session_risk_state": res.get("session_risk_state")})
+        return res
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/recovery/request")
+async def request_recovery_endpoint(
+    payload: RecoveryRequestInput,
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST", "INVESTIGATOR", "VIEWER"})),
+) -> dict[str, Any]:
+    try:
+        res = engine.request_recovery(
+            trader_id=payload.trader_id,
+            channel=payload.channel,
+            session_id=payload.session_id,
+            actor=actor["actor_id"],
+        )
+        await broadcast("RECOVERY_REQUESTED", res)
+        await broadcast("OBSERVATORY_UPDATED", {"trader_id": payload.trader_id, "operational_state": "RECOVERY"})
+        return res
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Trader not found")
+
+
+@app.post("/api/recovery/verify")
+async def verify_recovery_endpoint(
+    payload: RecoveryVerifyInput,
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST", "INVESTIGATOR", "VIEWER"})),
+) -> dict[str, Any]:
+    try:
+        res = engine.verify_recovery(
+            trader_id=payload.trader_id,
+            recovery_code=payload.recovery_code,
+            session_id=payload.session_id,
+            actor=actor["actor_id"],
+        )
+        await broadcast("RECOVERY_VERIFIED", res)
+        await broadcast("OBSERVATORY_UPDATED", {"trader_id": payload.trader_id, "operational_state": "MONITORING"})
+        await broadcast("RISK_UPDATED", {"trader_id": payload.trader_id, "trust_score": res.get("new_trust")})
+        return res
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Trader not found")
+
+
 @app.post("/api/verify/step-up")
 async def verify_step_up_endpoint(
     payload: StepUpVerificationInput,
@@ -522,6 +605,7 @@ async def verify_step_up_endpoint(
             actor=actor["actor_id"],
         )
         await broadcast("STEP_UP_VERIFIED", result)
+        await broadcast("OBSERVATORY_UPDATED", {"trader_id": payload.trader_id, "trust_score": result.get("new_trust")})
         await broadcast("RISK_UPDATED", {"trader_id": payload.trader_id, "trust_score": result.get("new_trust")})
         return result
     except KeyError:
