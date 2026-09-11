@@ -194,6 +194,7 @@ def test_all_sensitive_routes_have_authentication_dependency():
         "/api/audit",
         "/api/policies",
         "/api/policy/simulate",
+        "/api/counterfactual/simulate",
         "/api/search",
         "/api/sequences",
         "/api/simulator/step",

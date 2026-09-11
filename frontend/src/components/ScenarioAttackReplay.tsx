@@ -1010,8 +1010,61 @@ export function ScenarioAttackReplay({
                 </div>
 
                 <div style={{ marginTop: 10, padding: '8px 10px', background: 'var(--bg-surface-0)', borderRadius: 3, border: '1px solid var(--border-subtle)' }}>
-                  <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>ANALYST SUMMARY:</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>ANALYST SUMMARY &amp; ACTION PROVENANCE:</span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 8.5, padding: '2px 7px', color: 'var(--accent-cyan)' }}
+                        onClick={() => {
+                          const matchedEvent = activeStepResult?.event || events.find(e => e.trader_id === activeScenario.targetTraderId)
+                          const matchedDecision = activeStepResult?.decision || latestDecision
+                          onInspectEvidence?.(matchedDecision, matchedEvent, scenarioTrader)
+                        }}
+                        title="Open complete forensic evidence dossier"
+                      >
+                        INSPECT FORENSICS →
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 8.5, padding: '2px 7px', color: 'var(--accent-cobalt)' }}
+                        onClick={() => {
+                          if (activeStepResult?.event?.event_id && onNavigateToEvent) {
+                            onNavigateToEvent(activeStepResult.event.event_id, activeScenario.targetTraderId)
+                          } else if (onNavigate) {
+                            onNavigate('LIVE MONITOR')
+                          }
+                        }}
+                        title="Jump to live event stream in Live Telemetry Monitor"
+                      >
+                        LIVE MONITOR →
+                      </button>
+                      {(activeStepResult?.decision?.audit_id || activeStepResult?.audit_record?.audit_id) && onNavigateToAudit && (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 8.5, padding: '2px 7px', color: 'var(--accent-cyan)' }}
+                          onClick={() => {
+                            const aid = activeStepResult?.decision?.audit_id || activeStepResult?.audit_record?.audit_id
+                            onNavigateToAudit(aid, activeScenario.targetTraderId)
+                          }}
+                          title="Verify cryptographic SHA-256 ledger proof"
+                        >
+                          AUDIT VAULT →
+                        </button>
+                      )}
+                      {(activeStepResult?.decision?.case_id || (activeStepResult as any)?.case?.case_id) && onNavigate && (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 8.5, padding: '2px 7px', color: 'var(--accent-amber)' }}
+                          onClick={() => onNavigate('CASES')}
+                          title="Open escalated incident case"
+                        >
+                          VIEW IN CASES →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
                     {activeStepResult?.explanation?.summary || activeScenario.steps[currentStepIndex - 1]?.detail}
                   </div>
                 </div>
@@ -1033,6 +1086,8 @@ export function ScenarioAttackReplay({
               }}
               onOpenTopology={() => onNavigate?.('RELATIONSHIP GRAPH')}
               onNavigateToAudit={onNavigateToAudit}
+              onNavigateToCase={() => onNavigate?.('CASES')}
+              onNavigateToEvent={onNavigateToEvent}
             />
           </div>
         </div>

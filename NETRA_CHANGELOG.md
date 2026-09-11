@@ -625,33 +625,50 @@ Provide instant, bidirectional operational navigation between every stage of the
 
 ---
 
-## Final Hackathon Round 1 (Checkpoint 1.3): Contextual Anomaly Session Verification & Operational Hardening (September 12, 2026)
+## Final Hackathon Round 1 (Checkpoint 1.3): Causal Reasoning, Contextual Anomaly Verification & Operational Hardening (September 12, 2026)
 
 ### Objective
-Complete the continuous anomaly, session risk state, step-up verification, repeated-failure escalation, session termination, decision override, and counterfactual simulation layers, ensuring 100% synchronization across database persistence, in-memory engine state, cryptographic audit provenance, and operational UI.
+Solidify NETRA's causal intelligence chain (`EVENT → CONTEXT → SIGNALS → BASELINE → TOPOLOGY → TRUST IMPACT → POLICY → ACTION → AUDIT`), unify continuous anomaly detection, session risk states, step-up verification, session termination, decision overrides, and deterministic counterfactual sensitivity simulation across database persistence, in-memory state, and operational UI.
 
 ### Key Architectural & Functional Improvements
-1. **Session Risk State Coherence (`enforcement.py`, `engine.py`):**
+1. **Structured Causal Explanation Engine (`backend/engine.py`):**
+   - Extended `_explain` to compute structured `primary_drivers` with human-readable factor decomposition, direction (`positive` vs `negative`), contribution %, and severity ratings.
+   - Added `what_changed` operational before/after timeline detailing trust scores, policy tiers, device status, and velocity norms.
+   - Added `evidence_basis` binding exact `event_id`, `trader_id`, `decision_id`, `case_id`, and write-ahead ledger `audit_id` with SHA-256 hash.
+2. **Session Risk State Coherence & Enforcement (`enforcement.py`, `engine.py`):**
    - Standardized `SESSION_RISK_STATES` as an institutional metadata dictionary with all 6 states (`SESSION_NORMAL`, `SESSION_MONITORED`, `SESSION_SUSPICIOUS`, `SESSION_VERIFICATION_REQUIRED`, `SESSION_RESTRICTED`, `SESSION_TERMINATED`).
    - Integrated session termination enforcement: when a session is revoked or terminated, subsequent protected operations are strictly `BLOCK`ed at the enforcement gateway.
-2. **Contextual Step-Up Verification & Re-Evaluation (`engine.py`):**
+3. **Contextual Step-Up Verification & Repeated-Failure Escalation (`engine.py`):**
    - Step-up verification restores trust evidence-grounded without blind resets.
    - Successful verification re-evaluates residual wallet and topology risks (`VERIFY` → `MONITOR` / `ALLOW` or graduated `RESTRICT` if residual risks remain high).
    - Failed verification applies bounded penalty, tracks failure count, and automatically terminates sessions upon repeated failure under critical risk.
-3. **Cryptographic Audit Provenance Synchronization (`engine.py`, `models.py`):**
+4. **Deterministic Counterfactual Sensitivity Engine (`backend/engine.py` & `backend/main.py`):**
+   - Unified `simulate_counterfactual` evaluating hypothetical removal or normalization of risk signals through the identical `NetraEngine` aggregation and policy equations without mutating live system state.
+   - Supports both signal category removal sensitivity and granular event property modifications (`remove_device_novelty`, `remove_network_novelty`, `normalize_amount`, `normalize_leverage`, `verification_succeeded`).
+   - Discloses clear methodological boundary: *"Deterministic sensitivity simulation evaluating hypothetical factor removal through NetraEngine risk aggregation and policy thresholds without mutating live system state. Not a causal DAG inference."*
+5. **Cryptographic Audit Provenance Synchronization (`engine.py`, `models.py`):**
    - Unified `_audit()` helper so that `terminate_session()`, `override_decision()`, `create_case()`, and `ingest()` persist all audit entries to SQLite WAL database and in-memory ledger simultaneously with unbroken SHA-256 hash chaining.
    - Added backward-compatible `action` and `event` fields to audit record dictionaries and models.
-4. **Behavioral ML Anomaly & Baseline Integration (`anomaly_model.py`, `engine.py`):**
-   - Structured 12-dimensional feature extraction for Scikit-Learn Isolation Forest.
-   - Normalized graph degree baseline calculation against standard multi-entity topology.
+6. **Behavioral ML Anomaly & Baseline Integration (`anomaly_model.py`, `engine.py`, `baseline.py`):**
+   - Structured 12-dimensional feature extraction for Scikit-Learn Isolation Forest with `ANOMALY_TAXONOMY` and `StructuredAnomaly`.
+   - Added `baseline_confidence` score (`LOW`, `MEDIUM`, `HIGH`) to `AdaptiveTraderProfile`.
    - Seeded known IP/device configurations for baseline consistency.
+7. **Institutional UI Provenance & "What If?" Cockpit (`frontend/src/components/ReasoningEvidenceChain.tsx`):**
+   - 9-Stage Causal Pipeline with zero placeholder data: displays genuine values or explicit `NO MATERIAL SIGNAL DETECTED`.
+   - "WHY THIS DECISION?" contextual attribution grid displaying individual primary driver cards.
+   - "WHAT CHANGED?" operational before/event/after timeline cards with clear visual arrows.
+   - Interactive Counterfactual Simulation cockpit with toggle cards, preset buttons (`Habitual Profile`, `2FA Step-Up Passed`), live trust score shifts, policy transitions, and mitigated signal attribution chips.
+   - Authoritative Evidence Basis strip with one-click copy and cross-surface deep-linking (`⚡ Live Monitor`, `View Case →`, `Audit Vault →`, `Verify Proof 🔍`).
+   - Inline Cryptographic Proof Inspector verifying SHA-256 hash pre-image against write-ahead ledger.
+8. **Root Workspace Developer Experience (`package.json`):**
+   - Root workspace `package.json` delegating `npm run dev`, `npm run build`, and `npm run preview` to `frontend/`.
 
 ### Comprehensive Test & Verification Results
-- **Backend Test Suite:** 95 passed out of 95 tests across 5 test suites (`python -m pytest` with 100% pass rate in ~33s):
+- **Backend Test Suite:** 97 passed out of 97 tests across 5 test suites (`python -m pytest` with 100% pass rate in ~34s):
   - `test_anomaly_session_verification.py`: 15 passed
   - `test_api.py`: 23 passed
   - `test_auth.py`: 9 passed
   - `test_engine.py`: 43 passed
-  - `test_single_event_propagation.py`: 5 passed
-- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed in 189ms with 0 errors.
-- **Git diff whitespace & formatting:** `git diff --check` passed with 0 warnings.
+  - `test_single_event_propagation.py`: 7 passed
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly with 0 errors.
+- **Git diff whitespace & formatting:** `git diff --check` passed cleanly with 0 warnings.

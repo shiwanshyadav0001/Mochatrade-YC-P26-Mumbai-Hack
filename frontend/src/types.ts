@@ -18,6 +18,89 @@ export type RiskSignalItem = {
   source?: string
 }
 
+export type PrimaryDriver = {
+  name: string
+  category: string
+  severity: number
+  contribution?: number
+  observed?: string
+  baseline?: string
+  deviation?: string
+  direction?: 'negative' | 'positive' | 'neutral'
+  reason: string
+}
+
+export type WhatChanged = {
+  before: {
+    trust: number
+    policy: string
+    device?: string
+    amount_norm?: string
+    velocity?: string
+    topology?: string
+  }
+  event: {
+    event_id: string
+    event_type: string
+    amount?: number
+    device_id?: string
+    ip_address?: string
+    network_type?: string
+  }
+  after: {
+    trust: number
+    trust_delta: number
+    policy: string
+    action: string
+    risk_level: string
+  }
+}
+
+export type EvidenceBasis = {
+  event_id: string
+  trader_id: string
+  decision_id?: string
+  case_id?: string
+  audit_id?: string
+  audit_hash?: string
+}
+
+export type CounterfactualModifications = {
+  remove_device_novelty?: boolean
+  remove_network_novelty?: boolean
+  normalize_amount?: boolean
+  normalize_leverage?: boolean
+  remove_velocity?: boolean
+  remove_topology_linkage?: boolean
+  verification_succeeded?: boolean
+}
+
+export type CounterfactualResult = {
+  trader_id: string
+  original: {
+    trust: number
+    trust_delta: number
+    decision: string
+    action: string
+    risk_score?: number
+    signals?: RiskSignalItem[]
+  }
+  counterfactual: {
+    trust: number
+    trust_delta: number
+    decision: string
+    action: string
+    risk_score?: number
+    signals?: RiskSignalItem[]
+  }
+  trust_shift: number
+  policy_transition: string
+  mitigated_signals: RiskSignalItem[]
+  modifications_applied: CounterfactualModifications
+  simulation_type: string
+  methodological_note: string
+}
+
 export type Decision = {
   decision_id: string
   timestamp: string
@@ -40,6 +123,10 @@ export type Decision = {
     top_factors?: string[]
     recommendation?: string
     evidence?: Evidence[]
+    signals?: RiskSignalItem[]
+    primary_drivers?: PrimaryDriver[]
+    what_changed?: WhatChanged
+    evidence_basis?: EvidenceBasis
   }
   signals?: RiskSignalItem[]
   enforcement?: ActionEvaluationResult

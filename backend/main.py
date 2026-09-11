@@ -149,6 +149,12 @@ class ActionEvaluationInput(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
 
 
+class CounterfactualSimInput(BaseModel):
+    trader_id: str = Field(min_length=1, max_length=64)
+    event: dict[str, Any]
+    modifications: dict[str, Any] = Field(default_factory=dict)
+
+
 async def broadcast(kind: str, data: Any) -> None:
     message = json.dumps({"type": kind, "data": data})
     stale: list[asyncio.Queue[str]] = []
@@ -654,7 +660,7 @@ async def override_decision_endpoint(
 
 
 @app.post("/api/simulate/counterfactual")
-def simulate_counterfactual_endpoint(
+def simulate_counterfactual_by_category_endpoint(
     payload: CounterfactualInput,
     _: dict[str, str] = Depends(get_current_actor),
 ) -> dict[str, Any]:
@@ -714,6 +720,18 @@ def simulate_policy_endpoint(
     actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST"})),
 ) -> dict[str, Any]:
     return engine.simulate_policy(candidate_policy)
+
+
+@app.post("/api/counterfactual/simulate")
+def simulate_counterfactual_endpoint(
+    payload: CounterfactualSimInput,
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST", "INVESTIGATOR", "VIEWER"})),
+) -> dict[str, Any]:
+    return engine.simulate_counterfactual(
+        trader_id=payload.trader_id,
+        event_payload=payload.event,
+        modifications=payload.modifications,
+    )
 
 
 @app.get("/api/search")

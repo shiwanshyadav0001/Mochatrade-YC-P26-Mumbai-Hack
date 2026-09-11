@@ -264,3 +264,105 @@ def test_canonical_processed_trust_decision_and_flagship_scenario():
     assert any("DEV-7842-NEW" in nid for nid in node_ids)
     assert any("198.18.0.14" in nid for nid in node_ids)
     assert any("WALLET-7842-FRESH" in nid for nid in node_ids)
+
+
+def test_decision_explanation_and_causal_observability():
+    """Verify that every evaluated decision produces structured causal explanation:
+
+    1. primary_drivers decomposition with human-readable reasons and direction
+    2. what_changed operational before/after timeline
+    3. evidence_basis referencing exact event_id, decision_id, audit_id, and case_id.
+    """
+    engine = NetraEngine()
+    engine.reset()
+
+    trader_id = "7842"
+    event_payload = {
+        "trader_id": trader_id,
+        "event_type": "WITHDRAWAL",
+        "amount": 35000.0,
+        "currency": "USD",
+        "wallet_address": "WALLET-EXFILTRATION-TARGET",
+        "device_id": "DEV-ANOMALOUS-HARDWARE",
+        "ip_address": "185.220.101.5",
+        "network_type": "datacenter",
+        "source": "causal-observability-test",
+    }
+
+    result = engine.ingest(event_payload, actor="risk-officer")
+    decision = result["decision"]
+    explanation = decision.get("explanation", {})
+
+    # 1. Primary Drivers
+    drivers = explanation.get("primary_drivers", [])
+    assert len(drivers) > 0, "Expected primary drivers in decision explanation"
+    for d in drivers:
+        assert "name" in d and len(d["name"]) > 0
+        assert "category" in d
+        assert "severity" in d
+        assert "contribution" in d
+        assert "direction" in d
+        assert "reason" in d
+
+    # 2. What Changed Before/After Timeline
+    what_changed = explanation.get("what_changed", {})
+    assert "before" in what_changed
+    assert "event" in what_changed
+    assert "after" in what_changed
+    assert what_changed["before"]["trust"] >= 90.0
+    assert what_changed["before"]["policy"] == "ALLOW"
+    assert what_changed["after"]["trust"] < 70.0
+    assert what_changed["after"]["trust_delta"] < 0
+    assert what_changed["after"]["policy"] in {"VERIFY", "RESTRICT", "BLOCK"}
+
+    # 3. Authoritative Evidence Basis Linkage
+    evidence_basis = explanation.get("evidence_basis", {})
+    assert evidence_basis["event_id"] == result["event"]["event_id"]
+    assert evidence_basis["trader_id"] == trader_id
+    assert evidence_basis["decision_id"] == decision["decision_id"]
+    assert evidence_basis["audit_id"] == result["audit_record"]["audit_id"]
+    assert evidence_basis["audit_hash"] == result["audit_record"]["current_hash"]
+
+
+def test_deterministic_counterfactual_sensitivity_simulation():
+    """Verify that simulate_counterfactual deterministically evaluates 'What if?' scenarios
+
+    without mutating live engine state and correctly derives mitigated signals and policy transitions.
+    """
+    engine = NetraEngine()
+    engine.reset()
+
+    trader_id = "7842"
+    anomalous_payload = {
+        "event_id": "EV-TEST-CF-01",
+        "trader_id": trader_id,
+        "event_type": "WITHDRAWAL",
+        "amount": 40000.0,
+        "currency": "USD",
+        "wallet_address": "WALLET-EXFIL-NEW",
+        "device_id": "DEV-ANOMALOUS-UNSEEN",
+        "ip_address": "198.18.0.99",
+        "network_type": "datacenter",
+    }
+
+    # Simulate counterfactual: What if device was recognized and amount was within habitual average?
+    cf_res = engine.simulate_counterfactual(
+        trader_id=trader_id,
+        event_payload=anomalous_payload,
+        modifications={
+            "remove_device_novelty": True,
+            "remove_network_novelty": True,
+            "normalize_amount": True,
+        },
+    )
+
+    assert cf_res["simulation_type"] == "DETERMINISTIC_SENSITIVITY_SIMULATION"
+    assert "Not a causal DAG inference" in cf_res["methodological_note"]
+    assert cf_res["original"]["trust"] < 60.0
+    assert cf_res["counterfactual"]["trust"] > cf_res["original"]["trust"]
+    assert cf_res["trust_shift"] > 0
+    assert len(cf_res["mitigated_signals"]) > 0
+
+    # Ensure engine state was NOT mutated
+    assert engine.traders[trader_id]["trust_score"] == 94.0
+    assert not any(e["event_id"] == "EV-TEST-CF-01" for e in engine.events)
