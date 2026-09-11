@@ -1202,6 +1202,11 @@ export default function App() {
                 graph={graph}
                 onInspectEvidence={() => latestDecision && inspectDecision(latestDecision)}
                 onOpenTopology={() => setView('RELATIONSHIP GRAPH')}
+                onNavigateToAudit={handleNavigateToAudit}
+                onNavigateToCase={(caseId) => {
+                  setView('CASES')
+                }}
+                onNavigateToEvent={handleNavigateToEvent}
               />
 
               {/* Operational & Contextual Layer */}
