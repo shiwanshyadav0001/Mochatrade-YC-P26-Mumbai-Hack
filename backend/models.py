@@ -181,6 +181,7 @@ class AuditModel(Base):
             "timestamp": self.timestamp,
             "actor": self.actor,
             "event": self.event,
+            "action": self.event,
             "subject": self.subject,
             "reason": self.reason,
             "policy_version": self.policy_version,

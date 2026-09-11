@@ -24,10 +24,15 @@ from models import (
 )
 from audit_chain import chain_audit_record, verify_audit_chain, GENESIS_HASH
 from baseline import AdaptiveTraderProfile, BaselineEngine, NumericDistribution
-from enforcement import ActionEnforcementService, EnforcementResult
+from enforcement import ActionEnforcementService, EnforcementResult, SESSION_RISK_STATES
 from temporal import SequenceEngine, SequenceMatch, TemporalMetrics, TemporalWindowEngine
 from graph_intelligence import GraphIntelligenceEngine, GraphRiskSignal
-from anomaly_model import BehavioralAnomalyService, AnomalyInferenceResult
+from anomaly_model import (
+    BehavioralAnomalyService,
+    AnomalyInferenceResult,
+    StructuredAnomaly,
+    ANOMALY_TAXONOMY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +139,7 @@ class NetraEngine:
         self.anomaly_service = BehavioralAnomalyService()
         self.trader_anomaly_results: dict[str, AnomalyInferenceResult] = {}
         self.risk_events: list[dict[str, Any]] = []
+        self.sessions: dict[str, dict[str, Any]] = {}
         self.load_or_seed()
 
     def load_or_seed(self) -> None:
@@ -275,7 +281,7 @@ class NetraEngine:
                     for l in self.graph_links
                     if l["source"] in {f"trader:{tid}", f"TRADER-{tid}"} or l["target"] in {f"trader:{tid}", f"TRADER-{tid}"}
                 }
-                degree = len(connected_t) or 1
+                degree = len(connected_t) or 3
                 for ev in evs:
                     v, _ = BehavioralAnomalyService.extract_feature_vector(ev, prof, None, graph_degree=degree)
                     trusted_vectors.append(v)
@@ -308,6 +314,7 @@ class NetraEngine:
         self.anomaly_service = BehavioralAnomalyService()
         self.trader_anomaly_results = {}
         self.risk_events = []
+        self.sessions = {}
 
         # Clear and repopulate DB
         with get_db() as db:
@@ -372,7 +379,7 @@ class NetraEngine:
                     asset=self.rng.choice(["BTC", "ETH", "SOL"]),
                     leverage=self.rng.choice([1, 2, 3, 5]),
                     device_id=trader["baseline"]["known_devices"][0],
-                    ip_address="198.51.100.1" if trader_id == "7001" else f"198.51.100.{index % 200}",
+                    ip_address="203.0.113.22" if trader_id == "7842" else ("198.51.100.1" if trader_id == "7001" else f"198.51.100.{index % 200}"),
                     country="IN",
                     city="Mumbai",
                     source="seed",
@@ -744,6 +751,12 @@ class NetraEngine:
                     else ["DEV-7002-TRAVEL"] if trader_id == "7002"
                     else [f"DEV-{int(trader_id) % 300:03d}"]
                 ),
+                "known_ips": (
+                    ["203.0.113.22"] if trader_id == "7842"
+                    else ["198.51.100.1"] if trader_id == "7001"
+                    else ["203.0.113.77"] if trader_id == "7002"
+                    else [f"198.51.100.{tid_int % 200}"]
+                ),
                 "normal_login_hours": [8, 9, 10, 18, 19, 20],
                 "known_wallets": ["WALLET-7842-TRUSTED"] if trader_id == "7842" else [],
                 "transaction_velocity_per_hour": 3,
@@ -753,6 +766,9 @@ class NetraEngine:
             "last_event_at": None,
             "relationship_summary": "No elevated connections observed",
             "event_count": 22,
+            "session_risk_state": "SESSION_NORMAL",
+            "active_session_id": f"SESS-{trader_id}-PRIMARY",
+            "failed_verifications": 0,
         }
 
     def trader_list(self) -> list[dict[str, Any]]:
@@ -772,6 +788,8 @@ class NetraEngine:
                 anomaly_score = None
             t_events = self.trader_events(tid)
             last_activity = t_events[0]["timestamp"] if t_events else trader.get("last_event_at")
+            prof = self.baseline_profiles.get(tid)
+            baseline_conf = prof.baseline_confidence if prof else "MEDIUM"
 
             rows.append({
                 "trader_id": tid,
@@ -786,6 +804,10 @@ class NetraEngine:
                 "anomaly_score": round(float(anomaly_score), 1) if anomaly_score is not None else None,
                 "last_activity": last_activity,
                 "risk_dimensions": trader["risk_dimensions"],
+                "session_risk_state": trader.get("session_risk_state", "SESSION_NORMAL"),
+                "active_session_id": trader.get("active_session_id", f"SESS-{tid}-PRIMARY"),
+                "failed_verifications": trader.get("failed_verifications", 0),
+                "baseline_confidence": baseline_conf,
             })
         return sorted(rows, key=lambda item: item["trust_score"])
 
@@ -797,6 +819,8 @@ class NetraEngine:
         t_events = self.trader_events(trader_id)
         anomaly_res = self.trader_anomaly_results.get(trader_id)
         anomaly_dict = anomaly_res.to_dict() if hasattr(anomaly_res, "to_dict") else anomaly_res
+        prof = self.baseline_profiles.get(trader_id)
+        baseline_conf = prof.baseline_confidence if prof else "MEDIUM"
         return {
             **trader,
             "timeline": self.transitions[trader_id][-30:],
@@ -804,6 +828,10 @@ class NetraEngine:
             "event_count": len(t_events),
             "cases": t_cases,
             "anomaly": anomaly_dict,
+            "session_risk_state": trader.get("session_risk_state", "SESSION_NORMAL"),
+            "active_session_id": trader.get("active_session_id", f"SESS-{trader_id}-PRIMARY"),
+            "failed_verifications": trader.get("failed_verifications", 0),
+            "baseline_confidence": baseline_conf,
         }
 
 
@@ -827,23 +855,50 @@ class NetraEngine:
             "GEO_CHANGE": "LOGIN",
         }.get(event.event_type, event.event_type if event.event_type in ACTION_SENSITIVITY else "TRADE")
 
-    def _extract_signals(self, trader: dict[str, Any], event: EventRecord) -> list[RiskSignal]:
+    def _extract_signals(self, trader: dict[str, Any], event: EventRecord) -> tuple[list[RiskSignal], list[StructuredAnomaly]]:
         signals: list[RiskSignal] = []
+        anomalies: list[StructuredAnomaly] = []
         baseline = trader["baseline"]
+        profile = self.baseline_profiles.get(trader["trader_id"])
+        baseline_conf = profile.baseline_confidence if profile else "MEDIUM"
+        is_cold_start = (baseline_conf == "LOW")
 
         # 1. Device novelty
         is_new_device_event = event.event_type in {"NEW_DEVICE", "DEVICE_CHANGE"}
         is_unrecognized_device = bool(event.device_id and event.device_id not in baseline.get("known_devices", []))
         if is_new_device_event or is_unrecognized_device:
+            dev_sev = 32.0 if is_cold_start else 58.0
+            dev_reason = "Unrecognized device (cold-start baseline tolerance applied)" if is_cold_start else "Unrecognized device not in trader baseline"
             signals.append(
                 RiskSignal(
                     category="device",
                     feature="unrecognized_device",
-                    severity=58.0,
+                    severity=dev_sev,
                     contribution=0.0,
-                    reason="Unrecognized device not in trader baseline",
-                    evidence={"id": f"DEVICE-{event.device_id or 'UNKNOWN'}", "type": "DEVICE", "label": "Unrecognized device"},
+                    reason=dev_reason,
+                    evidence={"id": f"DEVICE-{event.device_id or 'UNKNOWN'}", "type": "DEVICE", "label": dev_reason},
                     rule_code="DEVICE_NOT_IN_BASELINE",
+                )
+            )
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type="NEW_DEVICE",
+                    severity="LOW" if is_cold_start else "MEDIUM",
+                    confidence=0.55 if is_cold_start else 0.88,
+                    observed_value=event.device_id or "UNKNOWN",
+                    expected_value=list(baseline.get("known_devices", [])),
+                    deviation="Novel hardware device signature not in historical profile",
+                    baseline_reference=f"{len(baseline.get('known_devices', []))} baseline devices recorded (Confidence: {baseline_conf})",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[f"DEV-{event.device_id or 'UNKNOWN'}"],
+                    correlation_group="IDENTITY_ACCESS",
+                    explanation=f"Device {event.device_id or 'UNKNOWN'} has not been previously observed for trader {event.trader_id}.",
+                    recommended_action="MONITOR",
                 )
             )
 
@@ -861,36 +916,100 @@ class NetraEngine:
                     rule_code="DATACENTER_NETWORK" if event.network_type == "datacenter" else "VPN_NETWORK",
                 )
             )
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type="NEW_NETWORK",
+                    severity="HIGH" if event.network_type == "datacenter" else "MEDIUM",
+                    confidence=0.92 if event.network_type == "datacenter" else 0.75,
+                    observed_value=f"{event.ip_address} ({event.network_type})",
+                    expected_value=list(baseline.get("known_ips", ["203.0.113.22"])),
+                    deviation=f"Non-residential infrastructure origin ({event.network_type})",
+                    baseline_reference=f"{len(baseline.get('known_ips', []))} baseline IPs recorded",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[f"IP-{event.ip_address or 'UNKNOWN'}"],
+                    correlation_group="NETWORK_ORIGIN",
+                    explanation=f"{event.network_type.capitalize()} network origin detected ({event.ip_address or 'unknown host'}).",
+                    recommended_action="VERIFY" if event.network_type == "datacenter" else "MONITOR",
+                )
+            )
         elif event.event_type == "IP_CHANGE":
+            ip_sev = 18.0 if is_cold_start else 32.0
             signals.append(
                 RiskSignal(
                     category="network",
                     feature="ip_change",
-                    severity=32.0,
+                    severity=ip_sev,
                     contribution=0.0,
                     reason="IP address changed from previous baseline",
                     evidence={"id": f"IP-{event.ip_address or 'UNKNOWN'}", "type": "IP", "label": "Network changed"},
                     rule_code="NETWORK_CHANGED",
                 )
             )
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type="NEW_IP",
+                    severity="LOW" if is_cold_start else "MEDIUM",
+                    confidence=0.68,
+                    observed_value=event.ip_address or "UNKNOWN",
+                    expected_value=list(baseline.get("known_ips", [])),
+                    deviation="Egress IP differs from primary network baseline",
+                    baseline_reference=f"{len(baseline.get('known_ips', []))} baseline IPs recorded",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[f"IP-{event.ip_address or 'UNKNOWN'}"],
+                    correlation_group="NETWORK_ORIGIN",
+                    explanation="Trader session originated from a newly observed IP address.",
+                    recommended_action="MONITOR",
+                )
+            )
 
         # 3. Geo / Identity novelty
         if event.country and event.country not in baseline.get("countries", []):
+            geo_sev = 16.0 if is_cold_start else 26.0
             signals.append(
                 RiskSignal(
                     category="identity",
                     feature="geo_novelty",
-                    severity=26.0,
+                    severity=geo_sev,
                     contribution=0.0,
                     reason=f"Activity from new country: {event.country}",
                     evidence={"id": f"GEO-{event.country}", "type": "GEO", "label": f"New country: {event.country}"},
                     rule_code="GEO_OUTSIDE_BASELINE",
                 )
             )
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type="LOCATION_DEVIATION",
+                    severity="LOW" if is_cold_start else "MEDIUM",
+                    confidence=0.82,
+                    observed_value=event.country,
+                    expected_value=list(baseline.get("countries", ["IN"])),
+                    deviation=f"Geographic egress country mismatch: {event.country}",
+                    baseline_reference=f"Primary country: {baseline.get('countries', ['IN'])[0] if baseline.get('countries') else 'IN'}",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[f"GEO-{event.country}"],
+                    correlation_group="IDENTITY_ACCESS",
+                    explanation=f"Trader logged in from {event.country}, diverging from established primary jurisdictions.",
+                    recommended_action="MONITOR",
+                )
+            )
 
         # 4. Money (Deposit / Withdrawal Amount Deviation with statistical z-score)
         if event.amount and event.event_type in {"DEPOSIT", "WITHDRAWAL"}:
-            profile = self.baseline_profiles.get(trader["trader_id"])
             expected = baseline.get("deposit_amount", 2500)
             dist = profile.deposit_distribution if (profile and event.event_type == "DEPOSIT") else (profile.withdrawal_distribution if profile else None)
             deviation = event.amount / expected if expected else 1.0
@@ -903,23 +1022,50 @@ class NetraEngine:
                 method = f"heuristic_ratio_{deviation:.1f}x"
 
             sev = clamp(20.0 + deviation * 7.0, 20.0, 92.0) if deviation >= 2.0 else 0.0
+            if is_cold_start:
+                sev *= 0.6
             if sev >= 20.0:
                 stat_meta = f" ({method})"
+                act_str = "withdrawal" if event.event_type == "WITHDRAWAL" else "deposit"
                 signals.append(
                     RiskSignal(
                         category="money",
                         feature="deposit_deviation" if event.event_type == "DEPOSIT" else "withdrawal_deviation",
                         severity=sev,
                         contribution=0.0,
-                        reason=f"${event.amount:,.0f} is {deviation:.1f}x normal baseline deposit{stat_meta}",
-                        evidence={"id": event.event_id, "type": "EVENT", "label": f"${event.amount:,.0f} is {deviation:.1f}x normal deposit{stat_meta}"},
+                        reason=f"${event.amount:,.0f} is {deviation:.1f}x normal baseline {act_str}{stat_meta}",
+                        evidence={"id": event.event_id, "type": "EVENT", "label": f"${event.amount:,.0f} is {deviation:.1f}x normal {act_str}{stat_meta}"},
                         rule_code="AMOUNT_OUTSIDE_INDIVIDUAL_BASELINE",
+                    )
+                )
+                anom_type = "WITHDRAWAL_AMOUNT_ANOMALY" if event.event_type == "WITHDRAWAL" else "TRANSACTION_AMOUNT_ANOMALY"
+                anom_sev = "CRITICAL" if deviation >= 5.0 else "HIGH" if deviation >= 2.5 else "MEDIUM"
+                if is_cold_start:
+                    anom_sev = "MEDIUM" if deviation >= 3.0 else "LOW"
+                anomalies.append(
+                    StructuredAnomaly(
+                        anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                        event_id=event.event_id,
+                        session_id=event.session_id,
+                        trader_id=event.trader_id,
+                        type=anom_type,
+                        severity=anom_sev,
+                        confidence=0.91 if not is_cold_start else 0.60,
+                        observed_value=f"${event.amount:,.0f}",
+                        expected_value=f"${expected:,.0f}",
+                        deviation=f"+{int((deviation - 1.0) * 100)}% ({deviation:.1f}x baseline)",
+                        baseline_reference=f"Baseline expected {act_str}: ${expected:,.0f} (Confidence: {baseline_conf})",
+                        first_seen=event.timestamp,
+                        last_seen=event.timestamp,
+                        related_entities=[event.event_id],
+                        correlation_group="FINANCIAL_SENSITIVITY",
+                        explanation=f"Trader requested a {act_str} of ${event.amount:,.0f}, deviating by {deviation:.1f}x from the historical baseline.",
+                        recommended_action="RESTRICT" if event.event_type == "WITHDRAWAL" and deviation >= 3.0 else "VERIFY",
                     )
                 )
 
         # 5. Behaviour (Leverage Deviation with statistical z-score)
         if event.leverage and event.leverage > baseline.get("leverage", 3) * 1.5:
-            profile = self.baseline_profiles.get(trader["trader_id"])
             expected_lev = baseline.get("leverage", 3)
             dist = profile.leverage_distribution if profile else None
             if dist and dist.sample_count >= BaselineEngine.MIN_SAMPLES_FOR_ZSCORE:
@@ -929,6 +1075,8 @@ class NetraEngine:
                 method = f"heuristic_lev_{event.leverage}x"
 
             sev = clamp(25.0 + event.leverage * 1.1, 25.0, 92.0)
+            if is_cold_start:
+                sev *= 0.7
             stat_meta = f" ({method})" if z_score is not None else ""
             signals.append(
                 RiskSignal(
@@ -941,12 +1089,35 @@ class NetraEngine:
                     rule_code="LEVERAGE_OUTSIDE_BASELINE",
                 )
             )
+            lev_ratio = (event.leverage / expected_lev) if expected_lev else 1.0
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type="LEVERAGE_ANOMALY",
+                    severity="HIGH" if event.leverage >= 20 else "MEDIUM",
+                    confidence=0.89 if not is_cold_start else 0.65,
+                    observed_value=f"{event.leverage:g}x",
+                    expected_value=f"{expected_lev}x (Normal Range: 1.5x-4x)",
+                    deviation=f"+{int((lev_ratio - 1.0) * 100)}%",
+                    baseline_reference=f"Baseline typical leverage: {expected_lev}x",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[event.event_id],
+                    correlation_group="TRADING_EXPOSURE",
+                    explanation=f"Trader historically operates around {expected_lev}x leverage. Current session opened a {event.leverage:g}x leveraged position.",
+                    recommended_action="VERIFY" if event.leverage >= 20 else "MONITOR",
+                )
+            )
 
         # Circadian / Time-of-Day Baseline Analysis
-        profile = self.baseline_profiles.get(trader["trader_id"])
         if profile and event.timestamp and profile.normal_login_hours:
             is_circ, circ_sev, circ_reason = BaselineEngine.check_circadian_deviation(event.timestamp, profile.normal_login_hours)
             if is_circ and circ_sev >= 20.0:
+                if is_cold_start:
+                    circ_sev *= 0.5
                 signals.append(
                     RiskSignal(
                         category="behaviour",
@@ -956,6 +1127,27 @@ class NetraEngine:
                         reason=f"Circadian activity deviation: {circ_reason}",
                         evidence={"id": f"CIRCADIAN-{event.trader_id}", "type": "CIRCADIAN", "label": f"Circadian deviation ({circ_reason})"},
                         rule_code="CIRCADIAN_ACTIVITY_ANOMALY",
+                    )
+                )
+                anomalies.append(
+                    StructuredAnomaly(
+                        anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                        event_id=event.event_id,
+                        session_id=event.session_id,
+                        trader_id=event.trader_id,
+                        type="UNUSUAL_LOGIN_TIME",
+                        severity="LOW" if is_cold_start else "MEDIUM",
+                        confidence=0.74,
+                        observed_value=circ_reason,
+                        expected_value=f"Active UTC hours: {profile.normal_login_hours}",
+                        deviation="Activity outside established circadian distribution",
+                        baseline_reference="Circadian active hours distribution",
+                        first_seen=event.timestamp,
+                        last_seen=event.timestamp,
+                        related_entities=[f"CIRCADIAN-{event.trader_id}"],
+                        correlation_group="BEHAVIOURAL",
+                        explanation=f"Activity logged at atypical hours for this trader: {circ_reason}.",
+                        recommended_action="MONITOR",
                     )
                 )
 
@@ -974,6 +1166,27 @@ class NetraEngine:
                     rule_code="FRESH_WITHDRAWAL_WALLET",
                 )
             )
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type="NEW_DESTINATION",
+                    severity="HIGH",
+                    confidence=0.93,
+                    observed_value=event.wallet_address or "UNKNOWN",
+                    expected_value=list(baseline.get("known_wallets", [])),
+                    deviation="Fresh unrecognized destination address on capital withdrawal",
+                    baseline_reference=f"{len(baseline.get('known_wallets', []))} known whitelist addresses",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[f"WALLET-{event.wallet_address or 'UNKNOWN'}"],
+                    correlation_group="FINANCIAL_DESTINATION",
+                    explanation=f"Withdrawal destination wallet {event.wallet_address or 'UNKNOWN'} has never been authorized in baseline.",
+                    recommended_action="RESTRICT",
+                )
+            )
 
         # 7. Temporal Sliding Window Velocity & Burst Detection
         base_vel = profile.transaction_velocity_per_hour if profile else 3.0
@@ -982,6 +1195,8 @@ class NetraEngine:
         )
         if t_metrics.burst_detected or t_metrics.events_1h >= self.policy["velocity_thresholds"]["events_per_hour"]:
             burst_sev = clamp(40.0 + min(50.0, t_metrics.burst_ratio * 10.0), 40.0, 85.0)
+            if is_cold_start:
+                burst_sev *= 0.7
             signals.append(
                 RiskSignal(
                     category="velocity",
@@ -991,6 +1206,27 @@ class NetraEngine:
                     reason=f"Temporal velocity burst: {t_metrics.events_1h} events/1h ({t_metrics.burst_ratio:.1f}x baseline), {t_metrics.events_15m} in last 15m",
                     evidence={"id": f"VELOCITY-{event.trader_id}", "type": "VELOCITY", "label": f"{t_metrics.events_1h} events in 1h window ({t_metrics.burst_ratio:.1f}x baseline)"},
                     rule_code="EVENT_VELOCITY_ELEVATED",
+                )
+            )
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type="VELOCITY_ANOMALY",
+                    severity="HIGH" if t_metrics.burst_ratio >= 3.0 else "MEDIUM",
+                    confidence=0.85 if not is_cold_start else 0.60,
+                    observed_value=f"{t_metrics.events_1h} events/1h ({t_metrics.burst_ratio:.1f}x)",
+                    expected_value=f"{base_vel} events/1h",
+                    deviation=f"+{int((t_metrics.burst_ratio - 1.0) * 100)}%",
+                    baseline_reference=f"Baseline velocity: {base_vel} events/hour",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[f"VELOCITY-{event.trader_id}"],
+                    correlation_group="TEMPORAL_BURST",
+                    explanation=f"Activity velocity spiked to {t_metrics.events_1h} events in 1h window ({t_metrics.burst_ratio:.1f}x baseline rate).",
+                    recommended_action="MONITOR",
                 )
             )
 
@@ -1003,7 +1239,14 @@ class NetraEngine:
             ("WALLET", event.wallet_address, "WITHDREW_TO"),
         ]:
             if value:
-                target = f"{prefix}-{value}"
+                if prefix == "DEVICE":
+                    target = value if (value.startswith("DEV-") or value.startswith("DEVICE-")) else f"DEV-{value}"
+                elif prefix == "IP":
+                    target = value if (value.startswith("IP-") or value.startswith("SUBNET-")) else f"IP-{value}"
+                elif prefix == "WALLET":
+                    target = value if value.startswith("WALLET-") else f"WALLET-{value}"
+                else:
+                    target = f"{prefix}-{value}"
                 link = {"source": source, "target": target, "type": relation, "evidence": [event.event_id]}
                 if link not in active_links:
                     active_links.append(link)
@@ -1026,6 +1269,28 @@ class NetraEngine:
                     rule_code=gs.rule_code,
                 )
             )
+            anom_type = "POSSIBLE_COLLUSION_PATTERN" if "COLLUSION" in gs.rule_code else "MULTI_ACCOUNT_CLUSTER"
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type=anom_type,
+                    severity="HIGH" if gs.severity >= 70.0 else "MEDIUM",
+                    confidence=0.88,
+                    observed_value=gs.reason,
+                    expected_value="Isolated individual infrastructure",
+                    deviation="Multi-entity shared infrastructure linkage across multiple accounts",
+                    baseline_reference="Entity graph topology analysis",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[gs.evidence.get("id", "")],
+                    correlation_group="TOPOLOGY_COLLUSION",
+                    explanation=gs.reason,
+                    recommended_action="VERIFY",
+                )
+            )
 
         # 9. Real Behavioral Anomaly Detection (Isolation Forest)
         connected_targets = {
@@ -1045,7 +1310,7 @@ class NetraEngine:
         self.trader_anomaly_results[event.trader_id] = anomaly_res
 
         # ML Evidence Integration with Anti-Double-Counting
-        if anomaly_res.status == "TRAINED" and anomaly_res.anomaly_score >= 55.0:
+        if anomaly_res.status == "TRAINED" and anomaly_res.anomaly_score >= 60.0 and len(anomaly_res.top_deviations) > 0:
             ml_severity = clamp(40.0 + (anomaly_res.anomaly_score - 55.0) * 0.88, 40.0, 80.0)
             signals.append(
                 RiskSignal(
@@ -1064,8 +1329,29 @@ class NetraEngine:
                     rule_code="UNSUPERVISED_BEHAVIORAL_ANOMALY",
                 )
             )
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type="BEHAVIOURAL_DEVIATION",
+                    severity="HIGH" if anomaly_res.anomaly_score >= 75.0 else "MEDIUM",
+                    confidence=0.81,
+                    observed_value=f"{anomaly_res.anomaly_score:.1f}/100 anomaly score",
+                    expected_value="Score < 55.0 (Normal distribution)",
+                    deviation=f"+{anomaly_res.anomaly_score - 55.0:.1f} points above normal boundary",
+                    baseline_reference="Isolation Forest 12-dimensional behavioral model",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[f"ML-ANOMALY-{event.trader_id}"],
+                    correlation_group="BEHAVIOURAL_ML",
+                    explanation=anomaly_res.explanation,
+                    recommended_action="MONITOR",
+                )
+            )
 
-        return signals
+        return signals, anomalies
 
     def _aggregate_contextual_risk(
         self,
@@ -1097,6 +1383,47 @@ class NetraEngine:
 
         return round(contextual_risk, 1), dimensions, multiplier
 
+    def _correlate_signals(self, signals: list[RiskSignal], anomalies: list[StructuredAnomaly]) -> tuple[str, str, float]:
+        """Correlates individual signals into common risk hypotheses (Account Takeover, Collusion, Rapid Drain)."""
+        categories = {s.category for s in signals}
+        anom_types = {a.type for a in anomalies}
+
+        has_identity = bool(categories.intersection({"identity", "device", "network"}))
+        has_financial = bool(categories.intersection({"money", "wallet"}))
+        has_trading = "behaviour" in categories or bool(anom_types.intersection({"LEVERAGE_ANOMALY", "POSITION_SIZE_ANOMALY"}))
+        has_topology = "relationships" in categories or bool(anom_types.intersection({"MULTI_ACCOUNT_CLUSTER", "POSSIBLE_COLLUSION_PATTERN"}))
+        has_sequence = "sequence" in categories or "SEQUENCE_ANOMALY" in anom_types
+
+        if has_identity and (has_financial or has_trading) and (has_sequence or len(anomalies) >= 3):
+            return (
+                "POTENTIAL_ACCOUNT_TAKEOVER",
+                "Compounded risk: Unrecognized identity/access vector combined with high-sensitivity financial or leverage actions strongly supports account takeover.",
+                1.35,
+            )
+        if has_topology and (has_financial or len(anomalies) >= 2):
+            return (
+                "COORDINATED_COLLUSION",
+                "Compounded risk: Entity graph topology links across multiple accounts indicate coordinated syndicate or wash activity.",
+                1.25,
+            )
+        if has_financial and has_trading and len(anomalies) >= 2:
+            return (
+                "RAPID_CAPITAL_DRAIN",
+                "Compounded risk: High leverage paired with capital withdrawal deviation indicates aggressive balance depletion attempt.",
+                1.20,
+            )
+        if len(anomalies) >= 1:
+            return (
+                "ISOLATED_DEVIATIONS",
+                "Independent activity variance evaluated against individual trader baseline.",
+                1.0,
+            )
+        return (
+            "BASELINE_CONFORMING",
+            "Observed activity remains within established individual baseline tolerances.",
+            1.0,
+        )
+
     def _calculate_trust_delta(
         self,
         prior_trust: float,
@@ -1110,8 +1437,10 @@ class NetraEngine:
         sens = policy["action_sensitivity"].get(action, 50.0)
 
         if contextual_risk < 5.0:
-            if event_type in {"TRADE", "LOGIN"} and prior_trust < initial_trust:
-                return min(1.2, round(initial_trust - prior_trust, 1))
+            if event_type in {"TRADE", "LOGIN", "DEPOSIT"} and prior_trust < initial_trust:
+                # Gradual trust recovery: recovers +1.5 to +3.2 points per clean event consistent with baseline
+                recovery_step = min(3.2, round((initial_trust - prior_trust) * 0.12 + 1.5, 1))
+                return min(recovery_step, round(initial_trust - prior_trust, 1))
             return 0.0
 
         # Proportional deduction scaled by action sensitivity
@@ -1120,7 +1449,7 @@ class NetraEngine:
         return -deduction
 
     def _feature_risks(self, trader: dict[str, Any], event: EventRecord) -> tuple[dict[str, float], list[dict[str, Any]], list[str]]:
-        signals = self._extract_signals(trader, event)
+        signals, _ = self._extract_signals(trader, event)
         seq = self._sequence(event.trader_id, event)
         if seq:
             signals.append(
@@ -1373,8 +1702,8 @@ class NetraEngine:
         prior = float(trader["trust_score"])
         prior_decision = trader.get("last_decision", "ALLOW")
 
-        # 1. Extract signals from event against trader baseline
-        signals = self._extract_signals(trader, event)
+        # 1. Extract signals and structured anomalies from event against trader baseline
+        signals, anomalies = self._extract_signals(trader, event)
         sequence = self._sequence(trader_id, event)
         if sequence:
             signals.append(
@@ -1388,11 +1717,35 @@ class NetraEngine:
                     rule_code="RAPID_SUSPICIOUS_WITHDRAWAL_SEQUENCE",
                 )
             )
+            anomalies.append(
+                StructuredAnomaly(
+                    anomaly_id=f"ANOM-{uuid4().hex[:8].upper()}",
+                    event_id=event.event_id,
+                    session_id=event.session_id,
+                    trader_id=event.trader_id,
+                    type="SEQUENCE_ANOMALY",
+                    severity="CRITICAL" if sequence["completion"] >= 80 else "HIGH",
+                    confidence=0.94,
+                    observed_value=f"{sequence['name']} ({sequence['completion']}%)",
+                    expected_value="Independent benign actions",
+                    deviation=f"Progression matching attack sequence signature: {sequence['name']}",
+                    baseline_reference="Temporal Kill-Chain Signature Engine",
+                    first_seen=event.timestamp,
+                    last_seen=event.timestamp,
+                    related_entities=[sequence["id"]],
+                    correlation_group="ATTACK_PROGRESSION",
+                    explanation=f"Sequence {sequence['name']} reached {sequence['completion']}% completion.",
+                    recommended_action="RESTRICT",
+                )
+            )
 
-        # 2. Contextual risk aggregation
+        # 2. Correlate signals into cohesive risk hypothesis
+        hypothesis_name, hypothesis_explanation, _ = self._correlate_signals(signals, anomalies)
+
+        # 3. Contextual risk aggregation
         contextual_risk, dimensions, multiplier = self._aggregate_contextual_risk(signals)
 
-        # 3. Action determination and trust delta calculation
+        # 4. Action determination and trust delta calculation
         action = self._action_for_event(event)
         trust_delta = self._calculate_trust_delta(
             prior,
@@ -1404,6 +1757,43 @@ class NetraEngine:
 
         new_trust = round(clamp(prior + trust_delta), 1)
         decision = self._decision(new_trust, action)
+
+        # 5. Active session state tracking & transition
+        session_id = event.session_id or trader.get("active_session_id") or f"SESS-{trader_id}-PRIMARY"
+        if session_id not in self.sessions:
+            self.sessions[session_id] = {
+                "session_id": session_id,
+                "trader_id": trader_id,
+                "risk_state": "SESSION_NORMAL",
+                "created_at": event.timestamp,
+                "last_event_at": event.timestamp,
+                "failed_verifications": 0,
+                "revoked": False,
+                "anomalies": [],
+            }
+        sess = self.sessions[session_id]
+        sess["last_event_at"] = event.timestamp
+        sess.setdefault("anomalies", [])
+        sess["anomalies"].extend([a.to_dict() for a in anomalies])
+
+        if sess.get("revoked", False) or sess.get("risk_state") == "SESSION_TERMINATED" or trader.get("session_risk_state") == "SESSION_TERMINATED":
+            sess_state = "SESSION_TERMINATED"
+            decision = "BLOCK"
+        elif decision == "BLOCK" or (new_trust < 15.0 and sess.get("failed_verifications", 0) >= 2):
+            sess_state = "SESSION_TERMINATED"
+            decision = "BLOCK"
+        elif decision == "RESTRICT" or (new_trust < 25.0 and action in {"WITHDRAWAL", "CHANGE_2FA", "CHANGE_PASSWORD"}):
+            sess_state = "SESSION_RESTRICTED"
+        elif decision == "VERIFY" or (new_trust < 45.0 and action in {"WITHDRAWAL", "LEVERAGED_TRADE"}):
+            sess_state = "SESSION_VERIFICATION_REQUIRED"
+        elif decision == "MONITOR" or contextual_risk >= 20.0 or len(anomalies) >= 1:
+            sess_state = "SESSION_MONITORED"
+        else:
+            sess_state = "SESSION_NORMAL"
+
+        sess["risk_state"] = sess_state
+        trader["session_risk_state"] = sess_state
+        trader["active_session_id"] = session_id
 
         evidence = [s.evidence for s in signals if s.evidence]
         rules = [s.rule_code for s in signals if s.rule_code]
@@ -1498,16 +1888,21 @@ class NetraEngine:
             "decision_id": f"DEC-{uuid4().hex[:8].upper()}",
             "timestamp": event.timestamp,
             "event_id": event.event_id,
+            "session_id": session_id,
+            "session_risk_state": sess_state,
             "trader_id": trader_id,
             "action": action,
             "decision": decision,
             "trust_score": new_trust,
             "previous_score": prior,
             "risk_level": trader["status"],
-            "confidence": "HIGH" if (contextual_risk > 30.0 or sequence) else "MEDIUM",
+            "confidence": "HIGH" if (contextual_risk > 30.0 or sequence or len(anomalies) >= 2) else "MEDIUM",
             "explanation": explanation,
             "triggered_rules": rules,
             "signals": [s.to_dict() for s in signals],
+            "anomalies": [a.to_dict() for a in anomalies],
+            "hypothesis": hypothesis_name,
+            "hypothesis_explanation": hypothesis_explanation,
             "contextual_risk": contextual_risk,
             "policy_version": self.policy["version"],
             "processing_latency_ms": latency,
@@ -1523,12 +1918,16 @@ class NetraEngine:
         audit_details = {
             "event_id": event.event_id,
             "decision_id": decision_record["decision_id"],
+            "session_id": session_id,
+            "session_risk_state": sess_state,
             "previous_state": prior,
             "new_state": new_trust,
             "contextual_risk": contextual_risk,
             "triggered_rules": rules,
             "evidence": explanation["evidence"],
             "signals": [s.to_dict() for s in signals],
+            "anomalies": [a.to_dict() for a in anomalies],
+            "hypothesis": hypothesis_name,
         }
 
         try:
@@ -1612,6 +2011,10 @@ class NetraEngine:
             "risk_events": matching_risk_events,
             "trader": updated_trader,
             "graph": trader_graph,
+            "anomalies": [a.to_dict() for a in anomalies],
+            "session": sess,
+            "session_risk_state": sess_state,
+            "hypothesis": hypothesis_name,
         }
 
     def _persist_event_and_decision(
@@ -1699,42 +2102,161 @@ class NetraEngine:
             )
             raise
 
-    def step_up_verify(self, trader_id: str, verification_type: str = "2FA_BIOMETRIC", actor: str = "risk-analyst") -> dict[str, Any]:
+    def step_up_verify(
+        self,
+        trader_id: str,
+        verification_type: str = "PASSKEY",
+        session_id: str | None = None,
+        action_bound: str | None = None,
+        status: str = "SUCCESS",
+        actor: str = "risk-analyst",
+    ) -> dict[str, Any]:
         if trader_id not in self.traders:
             raise KeyError(trader_id)
         trader = self.traders[trader_id]
         prior = float(trader["trust_score"])
-        # Recover trust significantly after verified identity proof
-        new_trust = round(clamp(prior + 35.0, 0.0, 95.0), 1)
+        ts = iso_now()
+        sess_id = session_id or trader.get("active_session_id") or f"SESS-{trader_id}-PRIMARY"
+
+        if sess_id not in self.sessions:
+            self.sessions[sess_id] = {
+                "session_id": sess_id,
+                "trader_id": trader_id,
+                "risk_state": "SESSION_NORMAL",
+                "created_at": ts,
+                "last_event_at": ts,
+                "failed_verifications": 0,
+                "revoked": False,
+                "anomalies": [],
+            }
+        sess = self.sessions[sess_id]
+
+        if status.upper() == "FAILED":
+            sess["failed_verifications"] = sess.get("failed_verifications", 0) + 1
+            fail_count = sess["failed_verifications"]
+            trader["failed_verifications"] = fail_count
+
+            # Penalty scales on failure
+            penalty = 12.0
+            new_trust = round(clamp(prior - penalty, 5.0, 95.0), 1)
+            trader["trust_score"] = new_trust
+            trader["status"] = risk_level(new_trust)
+            trader["last_decision"] = "RESTRICT"
+
+            # Check if critical conditions warrant automatic session termination
+            if fail_count >= 2 and (new_trust < 30.0 or trader["risk_dimensions"].get("identity", 0) >= 40.0):
+                return self.terminate_session(
+                    sess_id,
+                    trader_id,
+                    reason=f"Repeated step-up verification failure ({fail_count} attempts) under elevated risk",
+                    actor=actor,
+                )
+
+            sess["risk_state"] = "SESSION_RESTRICTED"
+            trader["session_risk_state"] = "SESSION_RESTRICTED"
+
+            event_id = f"EVENT-VERIFY-FAIL-{uuid4().hex[:6].upper()}"
+            bound_msg = f" for '{action_bound}'" if action_bound else ""
+            transition = {
+                "transition_id": f"TRUST-{uuid4().hex[:8].upper()}",
+                "timestamp": ts,
+                "event_id": event_id,
+                "event_type": "STEP_UP_VERIFICATION_FAILED",
+                "previous_score": prior,
+                "new_score": new_trust,
+                "delta": round(new_trust - prior, 1),
+                "reason": f"Step-up verification challenge failed via {verification_type}{bound_msg} (Attempt {fail_count}). Contextual risk escalated.",
+                "evidence": [{"id": event_id, "type": "VERIFICATION_FAILURE", "label": f"{verification_type} Failed"}],
+            }
+            self.transitions[trader_id].append(transition)
+            self._audit(
+                actor,
+                "STEP_UP_VERIFICATION_FAILED",
+                trader_id,
+                f"Step-up challenge failed via {verification_type}{bound_msg}",
+                {"previous_trust": prior, "new_trust": new_trust, "failed_attempts": fail_count, "session_id": sess_id},
+            )
+            return {
+                "trader_id": trader_id,
+                "session_id": sess_id,
+                "verified": False,
+                "status": "FAILED",
+                "previous_trust": prior,
+                "new_trust": new_trust,
+                "decision": "RESTRICT",
+                "session_risk_state": "SESSION_RESTRICTED",
+                "failed_verifications": fail_count,
+                "verification_type": verification_type,
+                "transition": transition,
+            }
+
+        # Successful verification path: contextual re-evaluation (NOT blind reset)
+        recovery_delta = 35.0 if verification_type == "2FA_BIOMETRIC" else (23.0 if verification_type in {"PASSKEY", "HARDWARE_KEY"} else 18.0)
+        new_trust = round(clamp(prior + recovery_delta, 0.0, 94.0), 1)
         trader["trust_score"] = new_trust
         trader["status"] = risk_level(new_trust)
-        trader["last_decision"] = "ALLOW"
+
+        # Contextual residual risk evaluation: verify identity ≠ verify all transactions safe
+        residual_wallet_risk = trader["risk_dimensions"].get("wallet", 0.0)
+        residual_topology_risk = trader["risk_dimensions"].get("relationships", 0.0)
+        residual_highest = max(residual_wallet_risk, residual_topology_risk)
+
+        if residual_highest >= 75.0 or new_trust < 20.0:
+            re_eval_decision = "RESTRICT"
+            re_eval_state = "SESSION_RESTRICTED"
+        elif new_trust < 45.0 or residual_highest >= 50.0:
+            re_eval_decision = "VERIFY"
+            re_eval_state = "SESSION_VERIFICATION_REQUIRED"
+        elif new_trust < 70.0:
+            re_eval_decision = "MONITOR"
+            re_eval_state = "SESSION_MONITORED"
+        else:
+            re_eval_decision = "ALLOW"
+            re_eval_state = "SESSION_NORMAL"
+
+        trader["last_decision"] = re_eval_decision
+        trader["session_risk_state"] = re_eval_state
+        sess["risk_state"] = re_eval_state
+        sess["failed_verifications"] = 0
+        trader["failed_verifications"] = 0
+
+        # Dampen risk dimensions proportionally
         for dim in trader["risk_dimensions"]:
-            trader["risk_dimensions"][dim] = round(trader["risk_dimensions"][dim] * 0.3, 1)
+            if dim in {"identity", "device", "network"}:
+                trader["risk_dimensions"][dim] = round(trader["risk_dimensions"][dim] * 0.25, 1)
+            else:
+                trader["risk_dimensions"][dim] = round(trader["risk_dimensions"][dim] * 0.70, 1)
 
         event_id = f"EVENT-VERIFY-{uuid4().hex[:6].upper()}"
-        ts = iso_now()
+        bound_msg = f" for '{action_bound}'" if action_bound else ""
         transition = {
             "transition_id": f"TRUST-{uuid4().hex[:8].upper()}",
             "timestamp": ts,
             "event_id": event_id,
-            "event_type": "STEP_UP_VERIFICATION",
+            "event_type": "STEP_UP_VERIFICATION_SUCCEEDED",
             "previous_score": prior,
             "new_score": new_trust,
             "delta": round(new_trust - prior, 1),
-            "reason": f"Identity verified via {verification_type}. Trust restored proportionally.",
-            "evidence": [{"id": event_id, "type": "STEP_UP", "label": f"{verification_type} Successful"}],
+            "reason": f"Identity verified via {verification_type}{bound_msg}. Context re-evaluated; trust restored evidence-grounded ({prior:.0f} -> {new_trust:.0f}).",
+            "evidence": [{"id": event_id, "type": "STEP_UP", "label": f"{verification_type} Verified"}],
         }
         self.transitions[trader_id].append(transition)
 
-        # Auto-resolve any open case for this trader
+        # Contextual Case update
         for case in self.cases.values():
             if case["trader_id"] == trader_id and case["status"] in {"OPEN", "INVESTIGATING"}:
-                case["status"] = "RESOLVED"
-                case["resolution"] = f"Resolved via {verification_type} step-up verification."
+                if residual_highest < 50.0 and new_trust >= 50.0:
+                    case["status"] = "RESOLVED"
+                    case["resolution"] = f"Resolved: Identity verified via {verification_type}. Residual risk within acceptable baseline."
+                else:
+                    case["notes"].append({
+                        "timestamp": ts,
+                        "author": actor,
+                        "text": f"Step-up verification ({verification_type}) succeeded. Trust restored to {new_trust:.1f}. Case remains open pending transaction clearance.",
+                    })
                 case["updated_at"] = ts
 
-        # Safely promote device / IP from recent unverified events into baseline upon successful step-up
+        # Safely promote device / IP into baseline on verified authentication
         recent = self.trader_events(trader_id)
         if recent:
             last_ev = recent[0]
@@ -1757,17 +2279,138 @@ class NetraEngine:
             actor,
             "STEP_UP_VERIFIED",
             trader_id,
-            f"Step-up verification passed ({verification_type})",
-            {"previous_trust": prior, "new_trust": new_trust},
+            f"Step-up verification passed ({verification_type}){bound_msg}. Re-evaluated context decision: {re_eval_decision}",
+            {"previous_trust": prior, "new_trust": new_trust, "decision": re_eval_decision, "session_id": sess_id},
         )
         return {
             "trader_id": trader_id,
+            "session_id": sess_id,
+            "verified": True,
+            "status": "SUCCESS",
             "previous_trust": prior,
             "new_trust": new_trust,
-            "status": trader["status"],
+            "decision": re_eval_decision,
+            "session_risk_state": re_eval_state,
             "verification_type": verification_type,
             "transition": transition,
+            "residual_risk": residual_highest,
         }
+
+    def terminate_session(self, session_id: str, trader_id: str, reason: str, actor: str = "system") -> dict[str, Any]:
+        """Terminates and invalidates an active trader session upon critical compromise or repeated verification failures."""
+        if trader_id not in self.traders:
+            raise KeyError(trader_id)
+        trader = self.traders[trader_id]
+        ts = iso_now()
+
+        sess = self.sessions.get(session_id) or {
+            "session_id": session_id,
+            "trader_id": trader_id,
+            "created_at": ts,
+        }
+        sess["revoked"] = True
+        sess["risk_state"] = "SESSION_TERMINATED"
+        sess["last_event_at"] = ts
+        self.sessions[session_id] = sess
+
+        trader["session_risk_state"] = "SESSION_TERMINATED"
+        trader["status"] = "TERMINATED"
+        trader["last_decision"] = "BLOCK"
+        trader["trust_score"] = min(trader["trust_score"], 14.0)
+
+        # Idempotent case creation / update
+        active_case = next(
+            (c for c in self.cases.values() if c["trader_id"] == trader_id and c["status"] in {"OPEN", "INVESTIGATING", "ESCALATED"}),
+            None,
+        )
+        if active_case:
+            active_case["severity"] = "CRITICAL"
+            active_case["notes"].append({
+                "timestamp": ts,
+                "author": actor,
+                "text": f"Session {session_id} TERMINATED: {reason}",
+            })
+            case_id = active_case["case_id"]
+        else:
+            new_c = self.create_case({
+                "trader_id": trader_id,
+                "severity": "CRITICAL",
+                "reason": f"Session terminated: {reason}",
+                "decision": "BLOCK",
+                "evidence": [{"id": session_id, "type": "SESSION", "label": "Session Terminated"}],
+            }, actor=actor)
+            case_id = new_c["case_id"]
+
+        audit_rec = self._audit(
+            actor,
+            "SESSION_TERMINATED",
+            f"SESSION-{session_id}",
+            reason,
+            {"session_id": session_id, "trader_id": trader_id, "case_id": case_id},
+        )
+
+        return {
+            "session_id": session_id,
+            "trader_id": trader_id,
+            "status": "SESSION_TERMINATED",
+            "revoked": True,
+            "reason": reason,
+            "case_id": case_id,
+            "audit_id": audit_rec["audit_id"],
+            "timestamp": ts,
+        }
+
+    def override_decision(
+        self,
+        decision_id: str,
+        trader_id: str,
+        operator: str,
+        override_action: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Allows authorized risk operations personnel to override an institutional decision with full audit provenance."""
+        if trader_id not in self.traders:
+            raise KeyError(trader_id)
+        dec = next((d for d in self.decisions if d.get("decision_id") == decision_id), None)
+        if not dec:
+            raise KeyError(f"Decision {decision_id} not found")
+
+        prev_decision = dec["decision"]
+        dec["decision"] = override_action
+        dec["overridden"] = True
+        dec["override_operator"] = operator
+        dec["override_reason"] = reason
+
+        trader = self.traders[trader_id]
+        trader["last_decision"] = override_action
+        if override_action == "ALLOW" and trader.get("session_risk_state") in {"SESSION_RESTRICTED", "SESSION_VERIFICATION_REQUIRED"}:
+            trader["session_risk_state"] = "SESSION_MONITORED"
+            if trader.get("active_session_id") in self.sessions:
+                self.sessions[trader["active_session_id"]]["risk_state"] = "SESSION_MONITORED"
+
+        audit_rec = self._audit(
+            operator,
+            "DECISION_OVERRIDDEN",
+            decision_id,
+            reason,
+            {
+                "decision_id": decision_id,
+                "trader_id": trader_id,
+                "previous_decision": prev_decision,
+                "override_decision": override_action,
+                "reason": reason,
+            },
+        )
+        return {
+            "decision_id": decision_id,
+            "trader_id": trader_id,
+            "previous_decision": prev_decision,
+            "new_decision": override_action,
+            "operator": operator,
+            "reason": reason,
+            "audit_id": audit_rec["audit_id"],
+        }
+
 
     def simulate_policy(self, candidate_policy: dict[str, Any]) -> dict[str, Any]:
         """Runs candidate policy against historical events without altering live state."""
@@ -1817,14 +2460,82 @@ class NetraEngine:
     def simulate_counterfactual(
         self,
         trader_id: str,
-        event_payload: dict[str, Any],
+        event_payload: dict[str, Any] | None = None,
         modifications: dict[str, Any] | None = None,
+        event_id: str | None = None,
+        remove_signal_categories: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Deterministically evaluates 'What if?' sensitivity scenarios for an event without mutating runtime engine state.
+        """Deterministically evaluates 'What if?' sensitivity scenarios for an event or decision without mutating runtime engine state.
 
-        Evaluates hypothetical removal or normalization of risk signals (device novelty, anomalous amounts,
-        datacenter networks, velocity surges, or topology clustering) through the exact NetraEngine policy equations.
+        Supports two evaluation modalities:
+        1. Granular event parameter sensitivity (event_payload + modifications): Evaluates hypothetical parameter
+           overrides (recognized hardware, familiar subnet, habitual amounts, 2FA success) through full policy evaluation.
+        2. Signal category removal sensitivity (remove_signal_categories): Evaluates sensitivity of an existing recorded decision
+           if specific signal categories (e.g. network, wallet) are removed.
         """
+        if trader_id not in self.traders:
+            raise KeyError(trader_id)
+
+        # Mode 2: Category removal sensitivity on existing recorded decision
+        if event_payload is None and (remove_signal_categories is not None or event_id is not None):
+            remove_cats = set(remove_signal_categories or [])
+            dec = None
+            if event_id:
+                dec = next((d for d in self.decisions if d.get("event_id") == event_id or d.get("decision_id") == event_id), None)
+            if not dec:
+                t_decs = [d for d in self.decisions if d["trader_id"] == trader_id]
+                if not t_decs:
+                    raise KeyError(f"No decisions recorded for trader {trader_id}")
+                dec = t_decs[-1]
+
+            orig_signals = dec.get("signals", [])
+            filtered_signals = [
+                RiskSignal(
+                    category=s.get("category", "anomaly"),
+                    feature=s.get("feature", "signal"),
+                    severity=float(s.get("severity", 50.0)),
+                    contribution=0.0,
+                    reason=s.get("reason", "signal"),
+                    evidence=s.get("evidence", {}),
+                    rule_code=s.get("rule_code", ""),
+                )
+                for s in orig_signals
+                if s.get("category") not in remove_cats
+            ]
+            sim_risk, _, _ = self._aggregate_contextual_risk(filtered_signals)
+            prior_trust = float(dec.get("previous_score", dec["trust_score"]))
+            trader = self.traders[trader_id]
+            action = dec.get("action", "TRADE")
+            sim_delta = self._calculate_trust_delta(
+                prior_trust,
+                sim_risk,
+                action,
+                action,
+                initial_trust=float(trader.get("initial_trust", 94.0)),
+            )
+            sim_trust = round(clamp(prior_trust + sim_delta), 1)
+            sim_decision = self._decision(sim_trust, action)
+
+            return {
+                "simulation": True,
+                "notice": "SIMULATION ONLY - DOES NOT MODIFY PRODUCTION STATE",
+                "trader_id": trader_id,
+                "event_id": dec.get("event_id"),
+                "original_trust": dec["trust_score"],
+                "simulated_trust": sim_trust,
+                "trust_difference": round(sim_trust - dec["trust_score"], 1),
+                "original_decision": dec["decision"],
+                "simulated_decision": sim_decision,
+                "removed_categories": list(remove_cats),
+                "original_signal_count": len(orig_signals),
+                "simulated_signal_count": len(filtered_signals),
+            }
+
+        # Mode 1: Event-based counterfactual simulation
+        if not event_payload:
+            t_events = [e for e in self.events if e["trader_id"] == trader_id]
+            event_payload = t_events[-1] if t_events else {"trader_id": trader_id, "event_type": "TRADE", "amount": 1000}
+
         mods = modifications or {}
         trader = self.traders.get(trader_id)
         if not trader:
@@ -1856,7 +2567,7 @@ class NetraEngine:
             risk_relevance=event_payload.get("risk_relevance", "medium"),
         )
 
-        orig_signals = self._extract_signals(trader, orig_event)
+        orig_signals, _ = self._extract_signals(trader, orig_event)
         orig_seq = self._sequence(trader_id, orig_event)
         if orig_seq:
             orig_signals.append(
@@ -1934,7 +2645,7 @@ class NetraEngine:
             risk_relevance="low" if mods.get("remove_device_novelty") and mods.get("normalize_amount") else "medium",
         )
 
-        cf_signals = self._extract_signals(trader, cf_event)
+        cf_signals, _ = self._extract_signals(trader, cf_event)
         if not mods.get("remove_sequence") and orig_seq:
             cf_signals.append(
                 RiskSignal(
@@ -2008,6 +2719,8 @@ class NetraEngine:
             "policy_transition": f"{orig_decision} → {cf_decision}",
             "mitigated_signals": mitigated,
             "modifications_applied": mods,
+            "simulation": True,
+            "notice": "SIMULATION ONLY - DOES NOT MODIFY PRODUCTION STATE",
             "simulation_type": "DETERMINISTIC_SENSITIVITY_SIMULATION",
             "methodological_note": "Sensitivity simulation evaluated deterministically through NetraEngine risk aggregation and policy thresholds without mutating live system state. Not a causal DAG inference.",
         }
@@ -2182,6 +2895,7 @@ class NetraEngine:
             "timestamp": iso_now(),
             "actor": actor,
             "event": event,
+            "action": event,
             "subject": subject,
             "reason": reason,
             "policy_version": self.policy["version"],
@@ -2207,7 +2921,7 @@ class NetraEngine:
             )
         )
 
-    def _audit(self, actor: str, event: str, subject: str, reason: str, details: dict[str, Any]) -> None:
+    def _audit(self, actor: str, event: str, subject: str, reason: str, details: dict[str, Any]) -> dict[str, Any]:
         rec = self._new_audit_record(actor, event, subject, reason, details)
         try:
             with get_db() as db:
@@ -2224,6 +2938,7 @@ class NetraEngine:
             )
             raise
         self.audit.append(rec)
+        return rec
 
     def verify_audit_chain(self) -> dict[str, Any]:
         """Cryptographically verifies the SHA-256 audit ledger."""
@@ -2248,6 +2963,7 @@ class NetraEngine:
         """Isolates scenario execution to prevent previous scenario residue from contaminating runs."""
         self.traders[trader_id] = self._new_trader(trader_id, trust, baseline_deposit)
         self.transitions[trader_id] = []
+        self.sessions = {sid: s for sid, s in self.sessions.items() if s.get("trader_id") != trader_id}
         # Preserve historical baseline seed events, purge previous scenario events
         self.events = [e for e in self.events if e["trader_id"] != trader_id or str(e.get("source", "")).startswith("seed")]
         self.decisions = [d for d in self.decisions if d["trader_id"] != trader_id or str(d.get("source", "")).startswith("seed")]
@@ -2344,13 +3060,21 @@ class NetraEngine:
                 {"trader_id": "7842", "event_type": "TRADE", "amount": 1200, "asset": "ETH", "leverage": 3, "country": "SG", "source": "legitimate-travel"},
             ]
 
-        if scenario in {"FRAUD_RING", "RING", "COLLUSION", "COLLUSION_CLUSTER"}:
+        if scenario in {"FRAUD_RING", "RING", "COLLUSION", "COLLUSION_CLUSTER", "MULTI_ACCOUNT_COLLUSION"}:
             for tid in ["7102", "7103", "7104", "7105"]:
                 self._isolate_scenario_trader(tid, trust=72.0, baseline_deposit=2500)
             events = []
             for trader_id in ["7102", "7103", "7104", "7105"]:
                 events.append({"trader_id": trader_id, "event_type": "WITHDRAWAL", "amount": 9800, "wallet_address": "WALLET-RING-X", "device_id": "DEV-RING-X", "ip_address": "IP-RING-X", "source": "fraud-ring"})
             return "7102", events
+
+        if scenario in {"FALSE_POSITIVE", "GENUINE_USER", "FALSE_POSITIVE_RESOLVED"}:
+            self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)
+            return "7842", [
+                {"trader_id": "7842", "event_type": "LOGIN", "device_id": "DEV-7842-AIRPORT", "ip_address": "195.154.122.10", "country": "FR", "city": "Paris", "source": "false-positive"},
+                {"trader_id": "7842", "event_type": "TRADE", "amount": 1800, "asset": "ETH", "leverage": 3, "device_id": "DEV-7842-AIRPORT", "country": "FR", "source": "false-positive"},
+                {"trader_id": "7842", "event_type": "TRADE", "amount": 2200, "asset": "BTC", "leverage": 2, "device_id": "DEV-7842-AIRPORT", "country": "FR", "source": "false-positive"},
+            ]
 
         if scenario in {"TAKEOVER", "ACCOUNT_TAKEOVER"}:
             self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)

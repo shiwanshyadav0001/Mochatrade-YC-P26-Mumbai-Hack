@@ -77,7 +77,7 @@ class ScenarioRequest(BaseModel):
         val = val.upper()
         valid = {
             "FLAGSHIP", "TRAVEL", "LEGITIMATE_TRAVEL", "IMPOSSIBLE_TRAVEL",
-            "FRAUD_RING", "RING", "COLLUSION", "COLLUSION_CLUSTER",
+            "FRAUD_RING", "RING", "COLLUSION", "COLLUSION_CLUSTER", "MULTI_ACCOUNT_COLLUSION",
             "TAKEOVER", "ACCOUNT_TAKEOVER",
             "NORMAL", "NORMAL_ACTIVITY",
             "NEW_DEVICE",
@@ -86,6 +86,7 @@ class ScenarioRequest(BaseModel):
             "WITHDRAWAL", "ABNORMAL_WITHDRAWAL",
             "ATTACK_SURGE", "SURGE",
             "HIGH_VALUE", "LEGITIMATE_HIGH_VALUE", "WHALE", "LEGITIMATE_HIGH_VALUE_ACTIVITY",
+            "FALSE_POSITIVE", "GENUINE_USER", "FALSE_POSITIVE_RESOLVED",
         }
         if val not in valid:
             raise ValueError(f"Unknown scenario: {val}. Supported: {sorted(valid)}")
@@ -93,7 +94,32 @@ class ScenarioRequest(BaseModel):
 
 
 class StepUpRequest(BaseModel):
-    verification_type: Literal["2FA_BIOMETRIC", "HARDWARE_KEY", "VIDEO_KYC", "SMS_OTP"] = "2FA_BIOMETRIC"
+    verification_type: Literal["PASSKEY", "TOTP", "HARDWARE_KEY", "VIDEO_KYC", "SMS_OTP", "2FA_BIOMETRIC"] = "PASSKEY"
+
+
+class StepUpVerificationInput(BaseModel):
+    trader_id: str
+    verification_type: Literal["PASSKEY", "TOTP", "HARDWARE_KEY", "VIDEO_KYC", "SMS_OTP", "2FA_BIOMETRIC"] = "PASSKEY"
+    session_id: str | None = None
+    action_bound: str | None = None
+    status: Literal["SUCCESS", "FAILED"] = "SUCCESS"
+
+
+class TerminateSessionInput(BaseModel):
+    trader_id: str
+    reason: str = "Manual security termination"
+
+
+class DecisionOverrideInput(BaseModel):
+    trader_id: str
+    target_action: Literal["ALLOW", "MONITOR", "VERIFY", "RESTRICT", "BLOCK"]
+    justification: str
+
+
+class CounterfactualInput(BaseModel):
+    trader_id: str
+    event_payload: dict[str, Any]
+    removed_signals: list[str] = Field(default_factory=list)
 
 
 class LoginInput(BaseModel):
@@ -485,6 +511,104 @@ async def reset_trader_baseline_endpoint(
         return res
     except KeyError:
         raise HTTPException(404, "Trader not found")
+
+
+@app.post("/api/verify/step-up")
+async def verify_step_up_endpoint(
+    payload: StepUpVerificationInput,
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST"})),
+) -> dict[str, Any]:
+    try:
+        result = engine.step_up_verify(
+            trader_id=payload.trader_id,
+            verification_type=payload.verification_type,
+            session_id=payload.session_id,
+            action_bound=payload.action_bound,
+            status=payload.status,
+            actor=actor["actor_id"],
+        )
+        await broadcast("STEP_UP_VERIFIED", result)
+        await broadcast("RISK_UPDATED", {"trader_id": payload.trader_id, "trust_score": result.get("new_trust")})
+        return result
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Trader not found")
+
+
+@app.post("/api/sessions/{session_id}/terminate")
+async def terminate_session_endpoint(
+    session_id: str,
+    payload: TerminateSessionInput,
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST"})),
+) -> dict[str, Any]:
+    try:
+        res = engine.terminate_session(
+            session_id=session_id,
+            trader_id=payload.trader_id,
+            reason=payload.reason,
+            actor=actor["actor_id"],
+        )
+        await broadcast("SESSION_TERMINATED", res)
+        await broadcast("RISK_UPDATED", {"trader_id": payload.trader_id, "session_risk_state": "SESSION_TERMINATED"})
+        return res
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Trader or session not found")
+
+
+@app.post("/api/decisions/{decision_id}/override")
+async def override_decision_endpoint(
+    decision_id: str,
+    payload: DecisionOverrideInput,
+    actor: dict[str, str] = Depends(require_role({"ADMIN"})),
+) -> dict[str, Any]:
+    try:
+        res = engine.override_decision(
+            decision_id=decision_id,
+            trader_id=payload.trader_id,
+            operator=actor["actor_id"],
+            override_action=payload.target_action,
+            reason=payload.justification,
+        )
+        await broadcast("DECISION_OVERRIDDEN", res)
+        await broadcast("RISK_UPDATED", {"trader_id": payload.trader_id, "decision": payload.target_action})
+        return res
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=f"Target not found: {e}")
+
+
+@app.post("/api/simulate/counterfactual")
+def simulate_counterfactual_by_category_endpoint(
+    payload: CounterfactualInput,
+    _: dict[str, str] = Depends(get_current_actor),
+) -> dict[str, Any]:
+    try:
+        # Ingest counterfactual into a scratch to get the decision, then revert
+        return engine.simulate_counterfactual(
+            trader_id=payload.trader_id,
+            remove_signal_categories=payload.removed_signals,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Trader not found")
+
+
+@app.get("/api/sessions/{session_id}")
+def get_session_endpoint(
+    session_id: str,
+    _: dict[str, str] = Depends(get_current_actor),
+) -> dict[str, Any]:
+    sess = engine.sessions.get(session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return sess
+
+
+@app.get("/api/traders/{trader_id}/sessions")
+def get_trader_sessions_endpoint(
+    trader_id: str,
+    _: dict[str, str] = Depends(get_current_actor),
+) -> list[dict[str, Any]]:
+    if trader_id not in engine.traders:
+        raise HTTPException(status_code=404, detail="Trader not found")
+    return [s for s in engine.sessions.values() if s.get("trader_id") == trader_id]
 
 
 @app.get("/api/policies")

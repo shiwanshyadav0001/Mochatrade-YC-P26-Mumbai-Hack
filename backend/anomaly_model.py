@@ -44,6 +44,53 @@ FEATURE_SCHEMA = {
     ],
 }
 
+ANOMALY_TAXONOMY = {
+    "IDENTITY": {
+        "NEW_DEVICE", "NEW_BROWSER", "NEW_IP", "NEW_NETWORK", "LOCATION_DEVIATION",
+        "IMPOSSIBLE_TRAVEL", "MULTIPLE_FAILED_LOGINS", "UNUSUAL_LOGIN_TIME", "SESSION_BEHAVIOUR_DEVIATION",
+    },
+    "BEHAVIOURAL": {
+        "BEHAVIOURAL_DEVIATION", "ACTIVITY_FREQUENCY_ANOMALY", "VELOCITY_ANOMALY",
+        "SEQUENCE_ANOMALY", "BEHAVIOURAL_DRIFT",
+    },
+    "TRADING": {
+        "LEVERAGE_ANOMALY", "EXPOSURE_ANOMALY", "POSITION_SIZE_ANOMALY", "TRADE_FREQUENCY_ANOMALY",
+        "UNUSUAL_INSTRUMENT", "UNUSUAL_LONG_SHORT_BEHAVIOUR", "PNL_DEVIATION", "RAPID_POSITION_CHANGE",
+    },
+    "TRANSACTION": {
+        "TRANSACTION_AMOUNT_ANOMALY", "WITHDRAWAL_AMOUNT_ANOMALY", "WITHDRAWAL_VELOCITY_ANOMALY",
+        "NEW_DESTINATION", "UNFAMILIAR_WALLET", "UNUSUAL_TRANSFER_PATTERN",
+    },
+    "RELATIONSHIP": {
+        "NEW_ENTITY_RELATIONSHIP", "SHARED_DEVICE", "SHARED_IP", "SHARED_WALLET",
+        "SUSPICIOUS_ACCOUNT_CONNECTION", "MULTI_ACCOUNT_CLUSTER", "POSSIBLE_COLLUSION_PATTERN",
+    },
+}
+
+
+@dataclass
+class StructuredAnomaly:
+    anomaly_id: str
+    event_id: str
+    session_id: str | None
+    trader_id: str
+    type: str
+    severity: str  # LOW, MEDIUM, HIGH, CRITICAL
+    confidence: float  # 0.0 to 1.0
+    observed_value: Any
+    expected_value: Any
+    deviation: str
+    baseline_reference: str
+    first_seen: str
+    last_seen: str
+    related_entities: list[str] = field(default_factory=list)
+    correlation_group: str = "GENERAL"
+    explanation: str = ""
+    recommended_action: str = "MONITOR"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
 
 @dataclass
 class AnomalyInferenceResult:

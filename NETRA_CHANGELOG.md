@@ -625,38 +625,50 @@ Provide instant, bidirectional operational navigation between every stage of the
 
 ---
 
-## Final Hackathon Round 1 (Checkpoint 1.3): Structured Causal Reasoning, Cross-Surface Provenance & Deterministic Counterfactual Sensitivity Simulation (September 12, 2026)
+## Final Hackathon Round 1 (Checkpoint 1.3): Causal Reasoning, Contextual Anomaly Verification & Operational Hardening (September 12, 2026)
 
 ### Objective
-Solidify NETRA's causal intelligence chain (`EVENT → CONTEXT → SIGNALS → BASELINE → TOPOLOGY → TRUST IMPACT → POLICY → ACTION → AUDIT`), eliminate empty or decorative UI cards, ensure authoritative before/after state explanation, and implement deterministic Counterfactual Sensitivity Simulation ("What If?") grounded in the live policy engine without mutating system state.
+Solidify NETRA's causal intelligence chain (`EVENT → CONTEXT → SIGNALS → BASELINE → TOPOLOGY → TRUST IMPACT → POLICY → ACTION → AUDIT`), unify continuous anomaly detection, session risk states, step-up verification, session termination, decision overrides, and deterministic counterfactual sensitivity simulation across database persistence, in-memory state, and operational UI.
 
-### Key Architectural & Functional Deliverables
+### Key Architectural & Functional Improvements
 1. **Structured Causal Explanation Engine (`backend/engine.py`):**
-   - Extended `_explain` to compute structured `primary_drivers` with human-readable factor decomposition, direction (`positive` vs `negative`), contribution, and severity ratings.
+   - Extended `_explain` to compute structured `primary_drivers` with human-readable factor decomposition, direction (`positive` vs `negative`), contribution %, and severity ratings.
    - Added `what_changed` operational before/after timeline detailing trust scores, policy tiers, device status, and velocity norms.
    - Added `evidence_basis` binding exact `event_id`, `trader_id`, `decision_id`, `case_id`, and write-ahead ledger `audit_id` with SHA-256 hash.
-2. **Deterministic Counterfactual Sensitivity Engine (`backend/engine.py` & `backend/main.py`):**
-   - Implemented `simulate_counterfactual` evaluating hypothetical removal or normalization of risk signals through the identical `NetraEngine` aggregation and policy equations.
-   - Exposed authenticated REST endpoint `POST /api/counterfactual/simulate` supporting hypothetical toggles:
-     - `remove_device_novelty` (recognized primary hardware)
-     - `remove_network_novelty` (residential ISP vs datacenter proxy)
-     - `normalize_amount` (habitual deposit average)
-     - `normalize_leverage` (baseline leverage ratio)
-     - `remove_velocity` (standard inter-event intervals)
-     - `remove_topology_linkage` (isolated node vs collusion cluster)
-     - `verification_succeeded` (biometric / 2FA challenge completed)
-   - Provides explicit methodological disclosure: *"Deterministic sensitivity simulation evaluating hypothetical factor removal through NetraEngine risk aggregation and policy thresholds without mutating live system state. Not a causal DAG inference."*
-3. **Institutional UI Provenance & "What If?" Cockpit (`frontend/src/components/ReasoningEvidenceChain.tsx`):**
+2. **Session Risk State Coherence & Enforcement (`enforcement.py`, `engine.py`):**
+   - Standardized `SESSION_RISK_STATES` as an institutional metadata dictionary with all 6 states (`SESSION_NORMAL`, `SESSION_MONITORED`, `SESSION_SUSPICIOUS`, `SESSION_VERIFICATION_REQUIRED`, `SESSION_RESTRICTED`, `SESSION_TERMINATED`).
+   - Integrated session termination enforcement: when a session is revoked or terminated, subsequent protected operations are strictly `BLOCK`ed at the enforcement gateway.
+3. **Contextual Step-Up Verification & Repeated-Failure Escalation (`engine.py`):**
+   - Step-up verification restores trust evidence-grounded without blind resets.
+   - Successful verification re-evaluates residual wallet and topology risks (`VERIFY` → `MONITOR` / `ALLOW` or graduated `RESTRICT` if residual risks remain high).
+   - Failed verification applies bounded penalty, tracks failure count, and automatically terminates sessions upon repeated failure under critical risk.
+4. **Deterministic Counterfactual Sensitivity Engine (`backend/engine.py` & `backend/main.py`):**
+   - Unified `simulate_counterfactual` evaluating hypothetical removal or normalization of risk signals through the identical `NetraEngine` aggregation and policy equations without mutating live system state.
+   - Supports both signal category removal sensitivity and granular event property modifications (`remove_device_novelty`, `remove_network_novelty`, `normalize_amount`, `normalize_leverage`, `verification_succeeded`).
+   - Discloses clear methodological boundary: *"Deterministic sensitivity simulation evaluating hypothetical factor removal through NetraEngine risk aggregation and policy thresholds without mutating live system state. Not a causal DAG inference."*
+5. **Cryptographic Audit Provenance Synchronization (`engine.py`, `models.py`):**
+   - Unified `_audit()` helper so that `terminate_session()`, `override_decision()`, `create_case()`, and `ingest()` persist all audit entries to SQLite WAL database and in-memory ledger simultaneously with unbroken SHA-256 hash chaining.
+   - Added backward-compatible `action` and `event` fields to audit record dictionaries and models.
+6. **Behavioral ML Anomaly & Baseline Integration (`anomaly_model.py`, `engine.py`, `baseline.py`):**
+   - Structured 12-dimensional feature extraction for Scikit-Learn Isolation Forest with `ANOMALY_TAXONOMY` and `StructuredAnomaly`.
+   - Added `baseline_confidence` score (`LOW`, `MEDIUM`, `HIGH`) to `AdaptiveTraderProfile`.
+   - Seeded known IP/device configurations for baseline consistency.
+7. **Institutional UI Provenance & "What If?" Cockpit (`frontend/src/components/ReasoningEvidenceChain.tsx`):**
    - 9-Stage Causal Pipeline with zero placeholder data: displays genuine values or explicit `NO MATERIAL SIGNAL DETECTED`.
    - "WHY THIS DECISION?" contextual attribution grid displaying individual primary driver cards.
    - "WHAT CHANGED?" operational before/event/after timeline cards with clear visual arrows.
    - Interactive Counterfactual Simulation cockpit with toggle cards, preset buttons (`Habitual Profile`, `2FA Step-Up Passed`), live trust score shifts, policy transitions, and mitigated signal attribution chips.
    - Authoritative Evidence Basis strip with one-click copy and cross-surface deep-linking (`⚡ Live Monitor`, `View Case →`, `Audit Vault →`, `Verify Proof 🔍`).
    - Inline Cryptographic Proof Inspector verifying SHA-256 hash pre-image against write-ahead ledger.
-4. **Root Workspace Developer Experience (`package.json`):**
-   - Maintained root workspace `package.json` delegating `npm run dev`, `npm run build`, and `npm run preview` to `frontend/`.
+8. **Root Workspace Developer Experience (`package.json`):**
+   - Root workspace `package.json` delegating `npm run dev`, `npm run build`, and `npm run preview` to `frontend/`.
 
-### Comprehensive Verification Results
-- **Backend Pytest Suite:** 82 passed out of 82 tests (100% pass rate in 25.84s across `test_api.py`, `test_auth.py`, `test_engine.py`, `test_single_event_propagation.py`).
-- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 126ms with 0 errors.
-- **Formatting & Whitespace:** `git diff --check` passed cleanly with 0 warnings.
+### Comprehensive Test & Verification Results
+- **Backend Test Suite:** 97 passed out of 97 tests across 5 test suites (`python -m pytest` with 100% pass rate in ~34s):
+  - `test_anomaly_session_verification.py`: 15 passed
+  - `test_api.py`: 23 passed
+  - `test_auth.py`: 9 passed
+  - `test_engine.py`: 43 passed
+  - `test_single_event_propagation.py`: 7 passed
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly with 0 errors.
+- **Git diff whitespace & formatting:** `git diff --check` passed cleanly with 0 warnings.

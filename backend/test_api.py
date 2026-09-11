@@ -226,7 +226,7 @@ def test_risk_events_endpoint(monkeypatch):
 
     # Ingest event with risk signal
     test_engine.ingest({
-        "trader_id": "7001",
+        "trader_id": "7842",
         "event_type": "WITHDRAWAL",
         "amount": 200000.0,
         "device_id": "DEV-ANONYMOUS-77",
@@ -245,8 +245,8 @@ def test_risk_events_endpoint(monkeypatch):
     assert "resulting_trust" in sample or "trust_after" in sample
 
     # Filter by trader_id
-    filtered = main.risk_events(trader_id="7001")
-    assert all(e["trader_id"] == "7001" for e in filtered)
+    filtered = main.risk_events(trader_id="7842")
+    assert all(e["trader_id"] == "7842" for e in filtered)
 
 
 def test_canonical_trader_7842_identity(monkeypatch):
