@@ -213,8 +213,10 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
             {/* Scrollable Case List */}
             <div className="case-list-scroll">
               {filteredCases.length === 0 ? (
-                <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 11 }}>
-                  No cases match active filter criteria.
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                  {cases.length === 0
+                    ? 'NO ACTIVE FORENSIC CASES IN QUEUE — CASES ARE AUTOMATICALLY ESCALATED ON CRITICAL/RESTRICTED TRUST DEVIATIONS OR INITIATED VIA "INITIALIZE CASE"'
+                    : 'NO FORENSIC CASES MATCHING ACTIVE FILTER CRITERIA'}
                 </div>
               ) : (
                 filteredCases.map(c => {

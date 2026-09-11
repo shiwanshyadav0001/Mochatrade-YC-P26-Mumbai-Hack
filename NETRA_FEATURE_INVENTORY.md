@@ -114,9 +114,14 @@
 - [x] SQLite WAL Mode Persistent Database (`netra.db`)
 - [x] Transactional Rollback on Database Failure
 - [x] Server-Side Role-Based Authorization (`require_role(...)` enforcement on privileged endpoints)
+- [x] Multi-Role Authentication Suite (`ADMIN`, `RISK_ANALYST`, `INVESTIGATOR`, `VIEWER` verified across all 9 endpoint groups)
+- [x] Typed Frontend API Error Layer (`ApiError` with 401 automatic session retry, 403 permission reporting, and network error handling)
 - [x] Environment-Driven CORS Security (Configurable `ALLOWED_ORIGINS` with secure localhost fallback)
 - [x] Safe Database Schema Migration (Automated column alteration in `init_db()`)
 - [x] JWT Authentication & Server-Side RBAC (HMAC-SHA256 bearer tokens, PBKDF2-SHA256 credential hashing, role-based route enforcement)
+- [x] Deterministic 10-Scenario Generation Engine (All 10 scenarios and institutional aliases producing structured payloads)
+- [x] Automated Single-Event Causal Propagation Integration Test (`backend/test_single_event_propagation.py`)
+- [x] Truthful Empty & Degraded States Across All 10 Console Screens
 - [ ] Ingestion API Rate Limiting
 - [ ] PostgreSQL Docker Container Connection (Unconnected; SQLite active)
 - [ ] Neo4j Docker Container Connection (Unconnected; SQLite active)

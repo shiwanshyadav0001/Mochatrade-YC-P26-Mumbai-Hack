@@ -196,9 +196,16 @@ export default function App() {
       setRiskEvents(nextRiskEvents)
       setSystemGraph(nextSysGraph)
       await refreshSelected(selectedIdRef.current)
-    } catch (error) {
-      setNotice('API reconnecting... Ensure FastAPI service is active on port 8000.')
-      console.error(error)
+    } catch (error: any) {
+      const detail = error?.detail || error?.message || 'Connection error'
+      if (error?.isAuthError) {
+        setNotice(`AUTHENTICATION REQUIRED // Session expired. Re-authenticating role...`)
+      } else if (error?.isForbidden) {
+        setNotice(`AUTHORIZATION NOTICE // ${detail}`)
+      } else {
+        setNotice(`REST TELEMETRY SYNCHRONIZATION // ${detail}`)
+      }
+      console.warn('API sync status:', detail)
     }
   }, [refreshSelected])
 
@@ -222,11 +229,14 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    setActorRole('ADMIN')
+    const savedRole = (sessionStorage.getItem('netra_actor_role') as UserRole) || 'ADMIN'
+    setUserRole(savedRole)
+    setActorRole(savedRole)
       .then(() => refreshAll())
-      .catch(error => {
-        setNotice('Authentication required. Configure the NETRA frontend credentials.')
-        console.error(error)
+      .catch((error: any) => {
+        const msg = error?.detail || error?.message || 'Configure NETRA credentials'
+        setNotice(`Session authentication: ${msg}`)
+        console.error('Session auth error:', error)
       })
   }, [])
 
@@ -338,10 +348,17 @@ export default function App() {
       await setActorRole(newRole)
       setUserRole(newRole)
       setNotice(`AUTHENTICATED ACTOR ROLE: ${newRole}`)
+    } catch (authError: any) {
+      const msg = authError?.detail || authError?.message || 'Authentication error'
+      setNotice(`Role transition to ${newRole} failed: ${msg}`)
+      console.error('Role auth error:', authError)
+      return
+    }
+
+    try {
       await refreshAll()
-    } catch (error) {
-      setNotice(`Authentication failed for ${newRole}.`)
-      console.error(error)
+    } catch (refreshErr: any) {
+      console.warn(`Data refresh after switching to ${newRole}:`, refreshErr)
     }
   }
 
@@ -1581,8 +1598,10 @@ export default function App() {
                         <tbody>
                           {filteredRiskEvents.length === 0 ? (
                             <tr>
-                              <td colSpan={8} style={{ textAlign: 'center', padding: 20, color: 'var(--text-dim)' }}>
-                                NO CONTEXTUAL RISK INCIDENTS MATCH CRITERIA
+                              <td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                                {riskEvents.length === 0
+                                  ? 'NO CONTEXTUAL RISK INCIDENTS IN LOG — EXECUTE AN ATTACK SCENARIO OR INGEST TELEMETRY TO POPULATE'
+                                  : 'NO CONTEXTUAL RISK INCIDENTS MATCHING CURRENT SEARCH CRITERIA'}
                               </td>
                             </tr>
                           ) : (

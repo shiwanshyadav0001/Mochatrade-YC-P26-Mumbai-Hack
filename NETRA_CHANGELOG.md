@@ -345,3 +345,55 @@ Establish the foundational forensic provenance layer connecting every live opera
 - **Backend Test Suite:** 71 passed out of 71 (`python -m pytest` with 100% pass rate, covering API endpoints, authentication, engine rules, and cryptographic provenance verification).
 - **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 170ms with 0 errors.
 - **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
+
+---
+
+## Phase 4A: Runtime Truth, Data Hydration, Authentication & Causal Foundation (September 11, 2026)
+
+### Objective
+Eliminate the empty/disconnected screens problem across NETRA. Transform the system from an unhydrated prototype into an authoritatively seeded, fully connected, causally consistent operational intelligence system with hardened RBAC authentication, zero decorative placeholders, truthful stream status handling, and an automated single-event causal propagation verification test suite.
+
+### Key Architectural Changes
+1. **Multi-Role RBAC Authentication Resolution (`backend/auth.py`, `frontend/src/api.ts`, `frontend/src/App.tsx`):**
+   - Investigated and resolved root cause of generic `"Authentication failed for RISK_ANALYST"`: separated role authentication errors from background data refresh warnings in `handleRoleChange()`.
+   - Introduced typed `ApiError` class in `frontend/src/api.ts` exposing `status`, `statusText`, `detail`, `isAuthError` (401), `isForbidden` (403), and `isNetworkError`.
+   - Added automatic 401 session token renewal retry logic in `api.get` and `api.send`.
+   - Preserved active role in `sessionStorage` (`netra_actor_role`) to prevent state desynchronization on page reload.
+   - Cleaned historical hackathon credentials in `backend/auth.py` and replaced with standard development JWT defaults.
+2. **Authoritative Domain State Hydration (`backend/engine.py`):**
+   - Seeded flagship trader #7842 with baseline transactions and entity graph linkages (`DEV-7842-PRIMARY`, `203.0.113.22`, `WALLET-7842-VAULT`) ensuring rich 4-node, 3-edge topology and active timeline immediately on boot.
+   - Preserved 106 seeded identities with individual adaptive baselines, contextual risk signals, and SHA-256 audit ledger from genesis.
+   - Verified that `engine.reset()` cleanly re-seeds all 106 traders, realistic baselines, graph links, recent events, decisions, cases, and cryptographic audit records.
+3. **Deterministic Scenario Replay Engine (`backend/engine.py`):**
+   - Expanded `prepare_scenario()` to support all 10 scenario keys and institutional aliases:
+     - `NORMAL_ACTIVITY` (and `NORMAL`)
+     - `NEW_DEVICE`
+     - `IMPOSSIBLE_TRAVEL` (and `TRAVEL`, `LEGITIMATE_TRAVEL`)
+     - `TWO_FACTOR_CHANGE` (and `CREDENTIALS`, `CREDENTIAL_CHANGE`, `2FA_CHANGE`)
+     - `LEVERAGE_SPIKE` (and `LEVERAGE`)
+     - `ABNORMAL_WITHDRAWAL` (and `WITHDRAWAL`)
+     - `COLLUSION_CLUSTER` (and `FRAUD_RING`, `RING`, `COLLUSION`)
+     - `ACCOUNT_TAKEOVER` (and `TAKEOVER`)
+     - `ATTACK_SURGE` (and `SURGE`)
+     - `LEGITIMATE_HIGH_VALUE_ACTIVITY` (and `HIGH_VALUE`, `LEGITIMATE_HIGH_VALUE`, `WHALE`)
+   - Guaranteed deterministic, reproducible event payloads without random unseeded noise.
+4. **Automated Single-Event Causal Propagation Test Suite (`backend/test_single_event_propagation.py`):**
+   - Implemented automated end-to-end integration tests proving the unbroken causal loop:
+     `EVENT -> SIGNALS -> BASELINE COMPARISON -> TOPOLOGY LINKAGE -> TRUST IMPACT -> POLICY DECISION -> ENFORCEMENT ACTION -> CASE CREATION -> SHA-256 AUDIT LEDGER`.
+   - Verified multi-event progressive attack degradation (`MONITOR` -> `VERIFY` -> `RESTRICT` -> `BLOCK`) with automatic case escalation and `trigger_event_id` binding.
+   - Verified all 10 scenario keys generate valid, structured event payloads.
+5. **Hardened Multi-Role Auth Test Suite (`backend/test_auth.py`):**
+   - Added automated tests verifying all 4 roles (`ADMIN`, `RISK_ANALYST`, `INVESTIGATOR`, `VIEWER`) can access all 9 required endpoint groups:
+     `/api/traders`, `/api/analytics`, `/api/cases`, `/api/audit`, `/api/policies`, `/api/decisions`, `/api/events`, `/api/risk-events`, `/api/graph/system`.
+   - Verified session switching continuity and granular RBAC denial enforcement (403 for unauthorized mutations).
+6. **Truthful Empty, Degraded & Streaming States Across Console:**
+   - `Live Telemetry Monitor`: truthful stream connection ribbon displaying `LIVE // SSE STREAM ACTIVE`, `CONNECTING // INITIALIZING SSE`, `RECONNECTING // AUTO RETRY`, or `STANDBY // REST ACTIVE` with retry button.
+   - `Risk Events`: informative empty state row distinguishing empty ingestion log from unmatched search queries.
+   - `Audit Vault`: informative empty state row distinguishing ledger initialization from filter mismatches.
+   - `Topology Graph`: centered empty overlay directing operator to select an active trader or switch to multi-trader system topology.
+   - `Forensic Case Workbench`: informative empty state explaining automated vs manual triage case creation.
+
+### Test Results & Build Verification
+- **Backend Test Suite:** 76 passed out of 76 (`python -m pytest` with 100% pass rate in 22.06s across all 4 test suites: `test_api.py`, `test_auth.py`, `test_engine.py`, `test_single_event_propagation.py`).
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 219ms with 0 errors.
+- **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.

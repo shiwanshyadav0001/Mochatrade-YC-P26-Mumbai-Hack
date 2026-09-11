@@ -25,7 +25,7 @@ def _unauthorized(detail: str = "Invalid or missing authentication token") -> HT
     )
 
 
-DEFAULT_DEV_JWT_SECRET = "netra-dev-jwt-secret-insecure-only-for-local-hackathon"
+DEFAULT_DEV_JWT_SECRET = "netra-dev-jwt-secret-insecure-only-for-local-development"
 _DEV_USERS_CACHE: dict[str, dict[str, str]] | None = None
 
 

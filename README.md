@@ -56,7 +56,8 @@ Real-time SSE Stream (`/api/stream`) → Institutional React/TypeScript Operatio
 │   ├── database.py            # SQLite connection pooling with WAL mode and auto-migration
 │   ├── test_engine.py         # Test suite: trust decay, baselines, temporal windows, and analytics
 │   ├── test_api.py            # Test suite: REST API contracts, RBAC, scenarios, and graph endpoints
-│   ├── test_auth.py           # Test suite: JWT tokens, password hashing, and role permissions
+│   ├── test_auth.py           # Test suite: JWT tokens, password hashing, and 4-role RBAC permissions
+│   ├── test_single_event_propagation.py # Integration test: 9-stage causal loop and scenario generation
 │   └── requirements.txt       # Python dependencies (FastAPI, SQLAlchemy, Scikit-learn, etc.)
 │
 ├── frontend/

@@ -778,8 +778,14 @@ export function LiveTelemetryMonitor({
               <tbody>
                 {filteredEvents.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                      NO INGESTION EVENTS MATCHING CURRENT FILTERS
+                    <td colSpan={7} style={{ textAlign: 'center', padding: 28, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                      {events.length === 0
+                        ? streamStatus === 'CONNECTING'
+                          ? 'CONNECTING TELEMETRY STREAM // AWAITING INGESTION FEED...'
+                          : streamStatus === 'RECONNECTING'
+                          ? 'RECONNECTING TELEMETRY STREAM // AUTO-RETRY IN PROGRESS...'
+                          : 'TELEMETRY STREAM STANDBY // EXECUTE A SCENARIO FROM SCENARIO LAB OR INGEST EVENTS'
+                        : `NO INGESTION EVENTS MATCHING FILTER CRITERIA (0 OF ${events.length} EVENTS)`}
                     </td>
                   </tr>
                 ) : (

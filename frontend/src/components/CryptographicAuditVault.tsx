@@ -355,7 +355,15 @@ export const CryptographicAuditVault: React.FC<CryptographicAuditVaultProps> = (
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAudit.map((item, idx) => {
+                  {filteredAudit.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                        {audit.length === 0
+                          ? 'AUDIT VAULT INITIALIZING — AWAITING SYSTEM STATE TRANSITIONS'
+                          : 'NO AUDIT RECORDS MATCHING ACTIVE FILTER CRITERIA'}
+                      </td>
+                    </tr>
+                  ) : filteredAudit.map((item, idx) => {
                     const isSelected = selectedRecord?.audit_id === item.audit_id
                     const displayHash = item.current_hash
                       ? `${item.current_hash.slice(0, 8)}...${item.current_hash.slice(-6)}`

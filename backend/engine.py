@@ -418,6 +418,51 @@ class NetraEngine:
         """Seeds distinct behavioral patterns for representative profiles via the real engine pipeline."""
         now = datetime.now(UTC)
 
+        # 0. Trader 7842 (Aarav Mehta - Flagship Trader) - Initial trusted operations & entity topology
+        t7842_events = [
+            EventRecord(
+                event_id="EV-SEED-7842-01",
+                timestamp=(now - timedelta(hours=5)).isoformat(),
+                trader_id="7842",
+                event_type="LOGIN",
+                device_id="DEV-7842-PRIMARY",
+                ip_address="203.0.113.22",
+                country="IN",
+                city="Mumbai",
+                source="seed-baseline",
+            ),
+            EventRecord(
+                event_id="EV-SEED-7842-02",
+                timestamp=(now - timedelta(hours=3, minutes=30)).isoformat(),
+                trader_id="7842",
+                event_type="DEPOSIT",
+                amount=3000,
+                currency="USD",
+                wallet_address="WALLET-7842-VAULT",
+                device_id="DEV-7842-PRIMARY",
+                ip_address="203.0.113.22",
+                country="IN",
+                city="Mumbai",
+                source="seed-baseline",
+            ),
+            EventRecord(
+                event_id="EV-SEED-7842-03",
+                timestamp=(now - timedelta(hours=1, minutes=15)).isoformat(),
+                trader_id="7842",
+                event_type="TRADE",
+                amount=1500,
+                asset="BTC",
+                leverage=2,
+                device_id="DEV-7842-PRIMARY",
+                ip_address="203.0.113.22",
+                country="IN",
+                city="Mumbai",
+                source="seed-baseline",
+            ),
+        ]
+        for ev in t7842_events:
+            self.process_event(ev, actor="system-seed")
+
         # 1. Trader 7001 (Elena Rostova) - Normal / Trusted activity
         t7001_events = [
             EventRecord(
@@ -1356,6 +1401,7 @@ class NetraEngine:
             self.create_case(
                 {
                     "trader_id": trader_id,
+                    "trigger_event_id": event.event_id,
                     "severity": trader["status"],
                     "reason": explanation["summary"],
                     "decision": decision,
@@ -1626,10 +1672,12 @@ class NetraEngine:
         trader_id = str(data["trader_id"])
         trader = self.traders[trader_id]
         case_id = f"CASE-{uuid4().hex[:6].upper()}"
+        trigger_event_id = data.get("trigger_event_id") or data.get("event_id")
         ts = iso_now()
         case = {
             "case_id": case_id,
             "trader_id": trader_id,
+            "trigger_event_id": trigger_event_id,
             "severity": data.get("severity", trader["status"]),
             "trust_score": trader["trust_score"],
             "status": "OPEN",
@@ -1660,7 +1708,11 @@ class NetraEngine:
                 )
                 db.add(c_model)
                 audit_record = self._new_audit_record(
-                    actor, "CASE_CREATED", trader_id, case["reason"], {"case_id": case_id}
+                    actor,
+                    "CASE_CREATED",
+                    trader_id,
+                    case["reason"],
+                    {"case_id": case_id, "trigger_event_id": trigger_event_id, "decision": case["decision"]},
                 )
                 self._add_audit_model(db, audit_record)
         except Exception as exc:
@@ -1886,7 +1938,7 @@ class NetraEngine:
             ]
             return "7842", events
 
-        if scenario in {"TRAVEL", "LEGITIMATE_TRAVEL"}:
+        if scenario in {"TRAVEL", "IMPOSSIBLE_TRAVEL", "LEGITIMATE_TRAVEL"}:
             self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)
             return "7842", [
                 {"trader_id": "7842", "event_type": "LOGIN", "device_id": "DEV-7842-TRAVEL", "ip_address": "203.0.113.88", "country": "SG", "city": "Singapore", "source": "legitimate-travel"},
@@ -1894,7 +1946,7 @@ class NetraEngine:
                 {"trader_id": "7842", "event_type": "TRADE", "amount": 1200, "asset": "ETH", "leverage": 3, "country": "SG", "source": "legitimate-travel"},
             ]
 
-        if scenario in {"FRAUD_RING", "RING"}:
+        if scenario in {"FRAUD_RING", "RING", "COLLUSION", "COLLUSION_CLUSTER"}:
             for tid in ["7102", "7103", "7104", "7105"]:
                 self._isolate_scenario_trader(tid, trust=72.0, baseline_deposit=2500)
             events = []
@@ -1902,13 +1954,68 @@ class NetraEngine:
                 events.append({"trader_id": trader_id, "event_type": "WITHDRAWAL", "amount": 9800, "wallet_address": "WALLET-RING-X", "device_id": "DEV-RING-X", "ip_address": "IP-RING-X", "source": "fraud-ring"})
             return "7102", events
 
-        if scenario == "TAKEOVER":
+        if scenario in {"TAKEOVER", "ACCOUNT_TAKEOVER"}:
             self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)
             return "7842", [
                 {"trader_id": "7842", "event_type": "NEW_DEVICE", "device_id": "DEV-ATO", "source": "account-takeover"},
                 {"trader_id": "7842", "event_type": "PASSWORD_CHANGE", "device_id": "DEV-ATO", "network_type": "datacenter", "source": "account-takeover"},
                 {"trader_id": "7842", "event_type": "2FA_CHANGE", "device_id": "DEV-ATO", "network_type": "datacenter", "source": "account-takeover"},
                 {"trader_id": "7842", "event_type": "API_KEY_CHANGE", "device_id": "DEV-ATO", "network_type": "datacenter", "source": "account-takeover"},
+            ]
+
+        if scenario in {"NORMAL", "NORMAL_ACTIVITY"}:
+            self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)
+            return "7842", [
+                {"trader_id": "7842", "event_type": "LOGIN", "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "country": "IN", "city": "Mumbai", "source": "normal-activity"},
+                {"trader_id": "7842", "event_type": "DEPOSIT", "amount": 1500, "currency": "USD", "country": "IN", "source": "normal-activity"},
+                {"trader_id": "7842", "event_type": "TRADE", "amount": 1000, "asset": "BTC", "leverage": 3, "country": "IN", "source": "normal-activity"},
+            ]
+
+        if scenario == "NEW_DEVICE":
+            self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)
+            return "7842", [
+                {"trader_id": "7842", "event_type": "NEW_DEVICE", "device_id": "DEV-7842-WORK", "ip_address": "203.0.113.22", "country": "IN", "city": "Mumbai", "source": "new-device"},
+                {"trader_id": "7842", "event_type": "TRADE", "amount": 2000, "asset": "ETH", "leverage": 3, "device_id": "DEV-7842-WORK", "source": "new-device"},
+            ]
+
+        if scenario in {"CREDENTIALS", "CREDENTIAL_CHANGE", "2FA_CHANGE", "TWO_FACTOR_CHANGE"}:
+            self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)
+            return "7842", [
+                {"trader_id": "7842", "event_type": "PASSWORD_CHANGE", "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "source": "credential-change"},
+                {"trader_id": "7842", "event_type": "2FA_CHANGE", "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "source": "credential-change"},
+                {"trader_id": "7842", "event_type": "WITHDRAWAL", "amount": 15000, "currency": "USD", "wallet_address": "WALLET-UNKNOWN-99", "source": "credential-change"},
+            ]
+
+        if scenario in {"LEVERAGE_SPIKE", "LEVERAGE"}:
+            self._isolate_scenario_trader("7002", trust=90.0, baseline_deposit=2500)
+            return "7002", [
+                {"trader_id": "7002", "event_type": "LOGIN", "device_id": "DEV-7002-TRAVEL", "ip_address": "198.51.100.12", "country": "US", "source": "leverage-spike"},
+                {"trader_id": "7002", "event_type": "LEVERAGE_CHANGE", "leverage": 75, "asset": "SOL", "device_id": "DEV-7002-TRAVEL", "source": "leverage-spike"},
+                {"trader_id": "7002", "event_type": "TRADE", "amount": 35000, "asset": "SOL", "leverage": 75, "device_id": "DEV-7002-TRAVEL", "source": "leverage-spike"},
+            ]
+
+        if scenario in {"WITHDRAWAL", "ABNORMAL_WITHDRAWAL"}:
+            self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)
+            return "7842", [
+                {"trader_id": "7842", "event_type": "LOGIN", "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "country": "IN", "source": "abnormal-withdrawal"},
+                {"trader_id": "7842", "event_type": "WITHDRAWAL", "amount": 45000, "currency": "USD", "wallet_address": "WALLET-7842-DRAIN", "device_id": "DEV-7842-PRIMARY", "source": "abnormal-withdrawal"},
+            ]
+
+        if scenario in {"ATTACK_SURGE", "SURGE"}:
+            self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)
+            return "7842", [
+                {"trader_id": "7842", "event_type": "NEW_DEVICE", "device_id": "DEV-SURGE-1", "ip_address": "198.18.0.21", "network_type": "datacenter", "source": "attack-surge"},
+                {"trader_id": "7842", "event_type": "PASSWORD_CHANGE", "device_id": "DEV-SURGE-1", "network_type": "datacenter", "source": "attack-surge"},
+                {"trader_id": "7842", "event_type": "LEVERAGE_CHANGE", "leverage": 80, "asset": "SOL", "device_id": "DEV-SURGE-1", "source": "attack-surge"},
+                {"trader_id": "7842", "event_type": "WITHDRAWAL", "amount": 35000, "currency": "USD", "wallet_address": "WALLET-SURGE-DRAIN", "device_id": "DEV-SURGE-1", "source": "attack-surge"},
+            ]
+
+        if scenario in {"HIGH_VALUE", "LEGITIMATE_HIGH_VALUE", "WHALE", "LEGITIMATE_HIGH_VALUE_ACTIVITY"}:
+            self._isolate_scenario_trader("7003", trust=96.0, baseline_deposit=50000)
+            return "7003", [
+                {"trader_id": "7003", "event_type": "LOGIN", "device_id": "DEV-7003-INSTITUTIONAL", "ip_address": "198.51.100.33", "country": "GB", "source": "whale-liquidity"},
+                {"trader_id": "7003", "event_type": "DEPOSIT", "amount": 150000, "currency": "USD", "source": "whale-liquidity"},
+                {"trader_id": "7003", "event_type": "TRADE", "amount": 120000, "asset": "BTC", "leverage": 2, "source": "whale-liquidity"},
             ]
 
         raise ValueError(f"Unknown scenario: {scenario}")

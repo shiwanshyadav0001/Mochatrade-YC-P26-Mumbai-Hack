@@ -253,6 +253,27 @@ export function InteractiveGraph({ graph, onSelectNode, selectedNodeId }: Intera
             )
           })}
         </svg>
+
+        {nodes.length === 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              textAlign: 'center',
+              color: 'var(--text-dim)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              pointerEvents: 'none',
+            }}
+          >
+            NO TOPOLOGY NODES DETECTED
+            <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>
+              Select an active trader or switch to Institutional Multi-Trader Topology
+            </div>
+          </div>
+        )}
       </div>
 
       <div

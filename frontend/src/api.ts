@@ -1,5 +1,25 @@
 import type { UserRole } from './types'
 
+export class ApiError extends Error {
+  status: number
+  statusText: string
+  detail: string
+  isAuthError: boolean
+  isForbidden: boolean
+  isNetworkError: boolean
+
+  constructor(status: number, statusText: string, detail: string, isNetworkError = false) {
+    super(detail || `Request failed with status ${status} (${statusText})`)
+    this.name = 'ApiError'
+    this.status = status
+    this.statusText = statusText
+    this.detail = detail
+    this.isAuthError = status === 401
+    this.isForbidden = status === 403
+    this.isNetworkError = isNetworkError
+  }
+}
+
 type AuthResponse = {
   access_token: string
   token_type: string
@@ -15,8 +35,14 @@ const DEV_CREDENTIALS: Record<UserRole, { username: string; password: string }> 
   VIEWER: { username: 'viewer', password: 'viewer-pass' },
 }
 
-let currentRole: UserRole = 'ADMIN'
+let currentRole: UserRole = (sessionStorage.getItem('netra_actor_role') as UserRole) || 'ADMIN'
 let accessToken = sessionStorage.getItem('netra_access_token') || ''
+
+export const clearAuthSession = (): void => {
+  accessToken = ''
+  sessionStorage.removeItem('netra_access_token')
+  sessionStorage.removeItem('netra_actor_role')
+}
 
 export const setActorRole = async (role: UserRole): Promise<void> => {
   const envUser = import.meta.env[`VITE_NETRA_${role}_USERNAME`] as string | undefined
@@ -24,52 +50,111 @@ export const setActorRole = async (role: UserRole): Promise<void> => {
   const username = envUser || DEV_CREDENTIALS[role]?.username
   const password = envPass || DEV_CREDENTIALS[role]?.password
   if (!username || !password) {
-    throw new Error(`Authentication credentials are not configured for ${role}`)
+    throw new ApiError(400, 'Bad Request', `Authentication credentials are not configured for ${role}`)
   }
 
-  const response = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  })
+  let response: Response
+  try {
+    response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+  } catch (err: any) {
+    throw new ApiError(0, 'Network Error', 'Backend service unreachable. Ensure NETRA FastAPI is active on port 8000.', true)
+  }
+
   if (!response.ok) {
-    throw new Error((await response.text()) || `Login failed with status ${response.status}`)
+    const errorText = await parseErrorDetail(response)
+    throw new ApiError(response.status, response.statusText, errorText)
   }
 
-  const auth = await response.json() as AuthResponse
+  const auth = (await response.json()) as AuthResponse
   if (auth.role !== role) {
-    throw new Error(`Authenticated role mismatch: expected ${role}, received ${auth.role}`)
+    throw new ApiError(403, 'Forbidden', `Authenticated role mismatch: expected ${role}, received ${auth.role}`)
   }
   currentRole = auth.role
   accessToken = auth.access_token
   sessionStorage.setItem('netra_access_token', accessToken)
+  sessionStorage.setItem('netra_actor_role', currentRole)
 }
 
 export const getActorRole = (): UserRole => currentRole
 
+async function parseErrorDetail(res: Response): Promise<string> {
+  try {
+    const data = await res.json()
+    if (typeof data.detail === 'string') return data.detail
+    if (Array.isArray(data.detail)) return data.detail.map((d: any) => d.msg || JSON.stringify(d)).join('; ')
+    return JSON.stringify(data)
+  } catch {
+    return (await res.text()) || `HTTP ${res.status}: ${res.statusText}`
+  }
+}
+
 export const api = {
   get: async <T>(path: string): Promise<T> => {
-    const res = await fetch(`/api${path}`, {
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-    })
+    let res: Response
+    try {
+      res = await fetch(`/api${path}`, {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      })
+    } catch {
+      throw new ApiError(0, 'Network Error', 'Failed to connect to NETRA API service.', true)
+    }
+
+    if (res.status === 401) {
+      try {
+        await setActorRole(currentRole)
+        res = await fetch(`/api${path}`, {
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+        })
+      } catch {
+        // Fall through to standard error handling
+      }
+    }
+
     if (!res.ok) {
-      const err = await res.text()
-      throw new Error(err || `Request failed with status ${res.status}`)
+      const errDetail = await parseErrorDetail(res)
+      throw new ApiError(res.status, res.statusText, errDetail)
     }
     return res.json() as Promise<T>
   },
+
   send: async <T>(method: string, path: string, data?: unknown): Promise<T> => {
-    const res = await fetch(`/api${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: data ? JSON.stringify(data) : undefined,
-    })
+    let res: Response
+    try {
+      res = await fetch(`/api${path}`, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: data ? JSON.stringify(data) : undefined,
+      })
+    } catch {
+      throw new ApiError(0, 'Network Error', 'Failed to connect to NETRA API service.', true)
+    }
+
+    if (res.status === 401) {
+      try {
+        await setActorRole(currentRole)
+        res = await fetch(`/api${path}`, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: data ? JSON.stringify(data) : undefined,
+        })
+      } catch {
+        // Fall through to standard error handling
+      }
+    }
+
     if (!res.ok) {
-      const err = await res.text()
-      throw new Error(err || `Request failed with status ${res.status}`)
+      const errDetail = await parseErrorDetail(res)
+      throw new ApiError(res.status, res.statusText, errDetail)
     }
     return res.json() as Promise<T>
   },
