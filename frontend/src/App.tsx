@@ -133,9 +133,24 @@ export default function App() {
 
   const [traderSearch, setTraderSearch] = useState('')
   const [traderSegment, setTraderSegment] = useState('ALL')
+  const [traderSortField, setTraderSortField] = useState<'trust_score' | 'name' | 'trader_id' | 'anomaly_score' | 'open_case_count' | 'last_activity'>('trust_score')
+  const [traderSortDir, setTraderSortDir] = useState<'asc' | 'desc'>('asc')
 
   const [eventSearch, setEventSearch] = useState('')
   const [eventTypeFilter, setEventTypeFilter] = useState('ALL')
+  const [riskSeverityFilter, setRiskSeverityFilter] = useState<'ALL' | 'CRITICAL' | 'HIGH' | 'GUARDED'>('ALL')
+  const [lastInjectionResult, setLastInjectionResult] = useState<{
+    trader_id: string
+    event_type: string
+    event_id?: string
+    decision: string
+    trust_score: number
+    delta?: number
+    risk_level?: string
+    rule_triggered?: string
+    reasons?: string[]
+    signals?: any[]
+  } | null>(null)
 
   const [caseNoteInputs, setCaseNoteInputs] = useState<Record<string, string>>({})
   const [auditFilterSubject, setAuditFilterSubject] = useState<string>('')
@@ -504,9 +519,21 @@ export default function App() {
     if (manualType === 'WITHDRAWAL') payload.wallet_address = 'WALLET-MANUAL-FRESH'
 
     try {
-      await api.send('POST', '/events', payload)
+      const res = await api.send<any>('POST', '/events', payload)
       soundManager.playSuccess()
       setNotice(`EVENT ${manualType} INGESTED & EVALUATED FOR #${targetId}`)
+      setLastInjectionResult({
+        trader_id: targetId,
+        event_type: manualType,
+        event_id: res?.event_id || res?.event?.event_id,
+        decision: res?.decision || res?.decision_impact || 'ALLOW',
+        trust_score: res?.trust_score ?? res?.resulting_trust ?? 94,
+        delta: res?.delta,
+        risk_level: res?.risk_level || 'NORMAL',
+        rule_triggered: res?.rule_triggered,
+        reasons: res?.reasons || (res?.reason ? [res.reason] : []),
+        signals: res?.signals || [],
+      })
       if (targetId === selectedId) {
         refreshSelected(selectedId)
       }
@@ -662,8 +689,17 @@ export default function App() {
     setNotice('TRADERS RISK LEDGER EXPORTED AS CSV.')
   }
 
+  const handleTraderSort = (field: 'trust_score' | 'name' | 'trader_id' | 'anomaly_score' | 'open_case_count' | 'last_activity') => {
+    if (traderSortField === field) {
+      setTraderSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setTraderSortField(field)
+      setTraderSortDir(field === 'trust_score' ? 'asc' : 'desc')
+    }
+  }
+
   const filteredTraders = useMemo(() => {
-    return traders.filter(t => {
+    const list = traders.filter(t => {
       const matchSearch =
         !traderSearch.trim() ||
         t.trader_id.includes(traderSearch) ||
@@ -681,7 +717,22 @@ export default function App() {
 
       return matchSearch && matchSegment && matchTier
     })
-  }, [traders, traderSearch, traderSegment, traderRiskFilter])
+
+    return list.sort((a, b) => {
+      let diff = 0
+      if (traderSortField === 'trust_score') diff = (a.trust_score ?? 0) - (b.trust_score ?? 0)
+      else if (traderSortField === 'name') diff = (a.name || '').localeCompare(b.name || '')
+      else if (traderSortField === 'trader_id') diff = Number(a.trader_id || 0) - Number(b.trader_id || 0)
+      else if (traderSortField === 'anomaly_score') diff = (a.anomaly_score ?? 0) - (b.anomaly_score ?? 0)
+      else if (traderSortField === 'open_case_count') diff = (a.open_case_count ?? 0) - (b.open_case_count ?? 0)
+      else if (traderSortField === 'last_activity') {
+        const timeA = a.last_activity ? new Date(a.last_activity).getTime() : 0
+        const timeB = b.last_activity ? new Date(b.last_activity).getTime() : 0
+        diff = timeA - timeB
+      }
+      return traderSortDir === 'asc' ? diff : -diff
+    })
+  }, [traders, traderSearch, traderSegment, traderRiskFilter, traderSortField, traderSortDir])
 
   const filteredRiskEvents = useMemo(() => {
     return riskEvents.filter(re => {
@@ -695,9 +746,16 @@ export default function App() {
         (re.feature && re.feature.toLowerCase().includes(q)) ||
         (re.signals && re.signals.some(s => s.reason?.toLowerCase().includes(q) || s.feature?.toLowerCase().includes(q)))
       const matchType = eventTypeFilter === 'ALL' || re.event_type === eventTypeFilter
-      return matchSearch && matchType
+
+      let matchSeverity = true
+      const sev = re.severity ?? re.contextual_risk ?? 0
+      if (riskSeverityFilter === 'CRITICAL') matchSeverity = sev >= 70
+      else if (riskSeverityFilter === 'HIGH') matchSeverity = sev >= 40 && sev < 70
+      else if (riskSeverityFilter === 'GUARDED') matchSeverity = sev < 40
+
+      return matchSearch && matchType && matchSeverity
     })
-  }, [riskEvents, eventSearch, eventTypeFilter])
+  }, [riskEvents, eventSearch, eventTypeFilter, riskSeverityFilter])
 
   const filteredEvents = useMemo(() => {
     return (events.length ? events : selected?.recent_events || []).filter(e => {
@@ -990,13 +1048,25 @@ export default function App() {
                       {populationStats.highestThreat ? `${populationStats.highestThreat.last_decision || 'FLAGGED'} // ${populationStats.highestThreat.name}` : 'Zero degraded fleet identities'}
                     </span>
                     {populationStats.highestThreat && (
-                      <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: 8.5, padding: '1px 6px' }}
-                        onClick={() => setSelectedId(populationStats.highestThreat!.trader_id)}
-                      >
-                        FOCUS TARGET
-                      </button>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 8.5, padding: '1px 6px' }}
+                          onClick={() => setSelectedId(populationStats.highestThreat!.trader_id)}
+                        >
+                          FOCUS TARGET
+                        </button>
+                        <button
+                          className="btn btn-primary"
+                          style={{ fontSize: 8.5, padding: '1px 6px' }}
+                          onClick={() => {
+                            setSelectedId(populationStats.highestThreat!.trader_id)
+                            setView('LIVE MONITOR')
+                          }}
+                        >
+                          INVESTIGATE →
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1327,14 +1397,26 @@ export default function App() {
                     <table className="data-table">
                       <thead>
                         <tr>
-                          <th>TRADER ID</th>
-                          <th>NAME</th>
+                          <th style={{ cursor: 'pointer' }} onClick={() => handleTraderSort('trader_id')}>
+                            TRADER ID {traderSortField === 'trader_id' ? (traderSortDir === 'asc' ? '▲' : '▼') : ''}
+                          </th>
+                          <th style={{ cursor: 'pointer' }} onClick={() => handleTraderSort('name')}>
+                            NAME {traderSortField === 'name' ? (traderSortDir === 'asc' ? '▲' : '▼') : ''}
+                          </th>
                           <th>SEGMENT</th>
-                          <th>TRUST</th>
+                          <th style={{ cursor: 'pointer' }} onClick={() => handleTraderSort('trust_score')}>
+                            TRUST {traderSortField === 'trust_score' ? (traderSortDir === 'asc' ? '▲' : '▼') : ''}
+                          </th>
                           <th>STATUS</th>
-                          <th>ANOMALY</th>
-                          <th>CASES</th>
-                          <th>LAST ACTIVITY</th>
+                          <th style={{ cursor: 'pointer' }} onClick={() => handleTraderSort('anomaly_score')}>
+                            ANOMALY {traderSortField === 'anomaly_score' ? (traderSortDir === 'asc' ? '▲' : '▼') : ''}
+                          </th>
+                          <th style={{ cursor: 'pointer' }} onClick={() => handleTraderSort('open_case_count')}>
+                            CASES {traderSortField === 'open_case_count' ? (traderSortDir === 'asc' ? '▲' : '▼') : ''}
+                          </th>
+                          <th style={{ cursor: 'pointer' }} onClick={() => handleTraderSort('last_activity')}>
+                            LAST ACTIVITY {traderSortField === 'last_activity' ? (traderSortDir === 'asc' ? '▲' : '▼') : ''}
+                          </th>
                           <th>ACTIONS</th>
                         </tr>
                       </thead>
@@ -1564,6 +1646,51 @@ export default function App() {
                   </div>
                   <DimensionMatrix dimensions={selected?.risk_dimensions} />
                 </div>
+
+                {/* Recent Behavioral Drift & Transitions */}
+                <div className="panel" style={{ marginTop: 12 }}>
+                  <div className="panel-header">
+                    <h3>Recent Behavioral Drift & Transitions</h3>
+                    <span className="panel-meta">TRADER #{selectedId}</span>
+                  </div>
+                  <div style={{ padding: '10px 14px' }}>
+                    {selected?.timeline && selected.timeline.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {selected.timeline.slice(-4).reverse().map((tr, idx) => (
+                          <div
+                            key={tr.transition_id || idx}
+                            style={{
+                              padding: '6px 8px',
+                              background: 'var(--bg-surface-0)',
+                              border: '1px solid var(--border-subtle)',
+                              borderRadius: 'var(--radius-xs)',
+                              fontSize: 10,
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                              <span className="mono" style={{ color: 'var(--accent-cobalt)', fontWeight: 600 }}>
+                                {tr.event_type || 'DRIFT'}
+                              </span>
+                              <span className="mono" style={{ color: tr.delta < 0 ? 'var(--state-critical)' : 'var(--state-normal)', fontWeight: 700 }}>
+                                {tr.previous_score} → {tr.new_score} ({tr.delta > 0 ? `+${tr.delta}` : tr.delta})
+                              </span>
+                            </div>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: 9.5 }}>
+                              {tr.reason}
+                            </div>
+                            <div className="mono" style={{ color: 'var(--text-dim)', fontSize: 8.5, marginTop: 2 }}>
+                              {formatTime(tr.timestamp)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mono" style={{ color: 'var(--text-dim)', fontSize: 10, textAlign: 'center', padding: '12px 0' }}>
+                        Baseline stable — zero degrading transitions logged for #{selectedId}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -1593,7 +1720,32 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <select
+                        value={eventTypeFilter}
+                        onChange={e => setEventTypeFilter(e.target.value)}
+                        style={{
+                          background: 'var(--bg-surface-2)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: 3,
+                          padding: '3px 6px',
+                          color: '#fff',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 10,
+                        }}
+                      >
+                        <option value="ALL">ALL EVENT TYPES</option>
+                        <option value="LOGIN">LOGIN</option>
+                        <option value="NEW_DEVICE">NEW_DEVICE</option>
+                        <option value="IP_CHANGE">IP_CHANGE</option>
+                        <option value="DEPOSIT">DEPOSIT</option>
+                        <option value="TRADE">TRADE</option>
+                        <option value="LEVERAGE_CHANGE">LEVERAGE_CHANGE</option>
+                        <option value="WITHDRAWAL">WITHDRAWAL</option>
+                        <option value="PASSWORD_CHANGE">PASSWORD_CHANGE</option>
+                        <option value="2FA_CHANGE">2FA_CHANGE</option>
+                        <option value="API_KEY_CHANGE">API_KEY_CHANGE</option>
+                      </select>
                       <input
                         type="text"
                         placeholder="Filter event stream..."
@@ -1614,6 +1766,34 @@ export default function App() {
                         EXPORT CSV
                       </button>
                     </div>
+                  </div>
+
+                  {/* Severity Filter Strip */}
+                  <div style={{
+                    display: 'flex',
+                    gap: 6,
+                    padding: '6px 12px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    background: 'var(--bg-surface-1)',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                  }}>
+                    <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>SEVERITY:</span>
+                    {[
+                      { id: 'ALL', label: `ALL (${riskEvents.length})` },
+                      { id: 'CRITICAL', label: `CRITICAL ≥70 (${riskEvents.filter(r => (r.severity ?? r.contextual_risk ?? 0) >= 70).length})` },
+                      { id: 'HIGH', label: `HIGH 40–69 (${riskEvents.filter(r => (r.severity ?? r.contextual_risk ?? 0) >= 40 && (r.severity ?? r.contextual_risk ?? 0) < 70).length})` },
+                      { id: 'GUARDED', label: `GUARDED <40 (${riskEvents.filter(r => (r.severity ?? r.contextual_risk ?? 0) < 40).length})` },
+                    ].map(sev => (
+                      <button
+                        key={sev.id}
+                        className={`btn ${riskSeverityFilter === sev.id ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ fontSize: 8.5, padding: '2px 6px' }}
+                        onClick={() => setRiskSeverityFilter(sev.id as any)}
+                      >
+                        {sev.label}
+                      </button>
+                    ))}
                   </div>
 
                   <div className="table-container" style={{ maxHeight: 520 }}>
@@ -1833,6 +2013,115 @@ export default function App() {
                       INGEST & EVALUATE CONTEXT
                     </button>
                   </div>
+
+                  {/* Immediate Ingestion Outcome Feedback */}
+                  {lastInjectionResult && (
+                    <div
+                      style={{
+                        margin: '0 14px 14px',
+                        background: 'var(--bg-surface-0)',
+                        border: '1px solid var(--border-medium)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '12px 14px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-dim)' }}>
+                            IMMEDIATE EVALUATION RESULT:
+                          </span>
+                          <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>
+                            #{lastInjectionResult.trader_id} // {lastInjectionResult.event_type}
+                          </span>
+                          {lastInjectionResult.event_id && (
+                            <span className="mono" style={{ fontSize: 9, color: 'var(--accent-cobalt)' }}>
+                              [{lastInjectionResult.event_id}]
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <StatusBadge value={lastInjectionResult.decision} />
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: 8.5, padding: '1px 5px' }}
+                            onClick={() => setLastInjectionResult(null)}
+                          >
+                            DISMISS ✕
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 10.5, marginBottom: 8, flexWrap: 'wrap' }}>
+                        <span>
+                          RESULTING TRUST: <b className="mono">{Math.round(lastInjectionResult.trust_score)} / 100</b>
+                        </span>
+                        {lastInjectionResult.delta !== undefined && (
+                          <span className="mono" style={{ color: lastInjectionResult.delta < 0 ? 'var(--state-critical)' : 'var(--state-normal)', fontWeight: 600 }}>
+                            SCORE DELTA: {lastInjectionResult.delta > 0 ? `+${lastInjectionResult.delta}` : lastInjectionResult.delta}
+                          </span>
+                        )}
+                        {lastInjectionResult.rule_triggered && (
+                          <span className="mono" style={{ color: 'var(--state-elevated)', fontSize: 10 }}>
+                            TRIGGERED RULE: {lastInjectionResult.rule_triggered}
+                          </span>
+                        )}
+                      </div>
+
+                      {lastInjectionResult.reasons && lastInjectionResult.reasons.length > 0 && (
+                        <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                          <b>CONTRIBUTING FACTORS:</b> {lastInjectionResult.reasons.join(' · ')}
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          className="btn btn-primary"
+                          style={{ fontSize: 9.5, padding: '3px 8px' }}
+                          onClick={() => {
+                            if (lastInjectionResult.event_id) {
+                              handleNavigateToEvent(lastInjectionResult.event_id, lastInjectionResult.trader_id)
+                            } else {
+                              setSelectedId(lastInjectionResult.trader_id)
+                              setView('LIVE MONITOR')
+                            }
+                          }}
+                        >
+                          INSPECT IN LIVE MONITOR →
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 9.5, padding: '3px 8px' }}
+                          onClick={() => {
+                            const matchedTrader = traders.find(t => t.trader_id === lastInjectionResult.trader_id)
+                            setDrawerData({
+                              trader: matchedTrader,
+                              event: {
+                                event_id: lastInjectionResult.event_id || 'EV-MANUAL',
+                                timestamp: new Date().toISOString(),
+                                trader_id: lastInjectionResult.trader_id,
+                                event_type: lastInjectionResult.event_type,
+                                source: 'operator-console',
+                                risk_relevance: lastInjectionResult.risk_level || 'high',
+                              },
+                            })
+                            setDrawerOpen(true)
+                          }}
+                        >
+                          OPEN FORENSIC EVIDENCE DRAWER →
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 9.5, padding: '3px 8px' }}
+                          onClick={() => {
+                            setSelectedId(lastInjectionResult.trader_id)
+                            setView('RELATIONSHIP GRAPH')
+                          }}
+                        >
+                          VIEW TRADER TOPOLOGY →
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2098,13 +2387,38 @@ export default function App() {
                     fontSize: 10,
                     alignItems: 'center',
                     justifyContent: 'space-between',
+                    flexWrap: 'wrap',
                   }}>
                     <span className="mono" style={{ color: 'var(--text-muted)' }}>ENFORCEMENT GATEWAY COUNTERS:</span>
-                    <div style={{ display: 'flex', gap: 16 }}>
-                      <span>PROCEED: <b className="mono">{analytics?.operational_metrics?.enforcement_counts?.PROCEED ?? 0}</b></span>
-                      <span>CHALLENGE 2FA: <b className="mono" style={{ color: 'var(--state-elevated)' }}>{analytics?.operational_metrics?.enforcement_counts?.CHALLENGE_2FA ?? 0}</b></span>
-                      <span>HOLD REVIEW: <b className="mono" style={{ color: 'var(--state-high)' }}>{analytics?.operational_metrics?.enforcement_counts?.HOLD_REVIEW ?? 0}</b></span>
-                      <span>HALT BLOCKED: <b className="mono" style={{ color: 'var(--state-critical)' }}>{analytics?.operational_metrics?.enforcement_counts?.HALT_BLOCKED ?? 0}</b></span>
+                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                      <span
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => { setRiskSeverityFilter('GUARDED'); setView('RISK EVENTS'); }}
+                        title="Filter risk events for guarded/proceed decisions"
+                      >
+                        PROCEED: <b className="mono">{analytics?.operational_metrics?.enforcement_counts?.PROCEED ?? 0}</b>
+                      </span>
+                      <span
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => { setRiskSeverityFilter('HIGH'); setView('RISK EVENTS'); }}
+                        title="Filter risk events for step-up verification decisions"
+                      >
+                        CHALLENGE 2FA: <b className="mono" style={{ color: 'var(--state-elevated)' }}>{analytics?.operational_metrics?.enforcement_counts?.CHALLENGE_2FA ?? 0}</b>
+                      </span>
+                      <span
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => { setView('CASES'); }}
+                        title="Triage open forensic investigation cases"
+                      >
+                        HOLD REVIEW: <b className="mono" style={{ color: 'var(--state-high)' }}>{analytics?.operational_metrics?.enforcement_counts?.HOLD_REVIEW ?? 0}</b>
+                      </span>
+                      <span
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => { setRiskSeverityFilter('CRITICAL'); setView('RISK EVENTS'); }}
+                        title="Filter risk events for critical block decisions"
+                      >
+                        HALT BLOCKED: <b className="mono" style={{ color: 'var(--state-critical)' }}>{analytics?.operational_metrics?.enforcement_counts?.HALT_BLOCKED ?? 0}</b>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -2118,30 +2432,51 @@ export default function App() {
                     <span className="panel-meta">POPULATION SPREAD</span>
                   </div>
                   <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {analytics?.trust_distribution.map(item => (
-                      <div
-                        key={item.band}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '80px 40px 1fr',
-                          alignItems: 'center',
-                          gap: 8,
-                        }}
-                      >
-                        <span className="mono" style={{ fontSize: 10 }}>{item.band}</span>
-                        <b className="mono">{item.count}</b>
-                        <div style={{ height: 6, background: 'var(--bg-surface-3)', borderRadius: 2 }}>
-                          <div
-                            style={{
-                              height: '100%',
-                              width: `${Math.min(100, item.count * 3)}%`,
-                              background: 'var(--accent-cobalt)',
-                              borderRadius: 2,
-                            }}
-                          />
+                    {analytics?.trust_distribution.map(item => {
+                      const mapBandToFilter: Record<string, any> = {
+                        'ALLOW': 'TRUSTED',
+                        'MONITOR': 'MONITORED',
+                        'VERIFY': 'MONITORED',
+                        'RESTRICT': 'RESTRICTED',
+                        'BLOCK': 'BLOCKED',
+                      }
+                      const bandPrefix = item.band.split(' ')[0].replace(/[^A-Z]/g, '')
+                      const targetTier = mapBandToFilter[bandPrefix] || 'ALL'
+                      return (
+                        <div
+                          key={item.band}
+                          onClick={() => {
+                            setTraderRiskFilter(targetTier)
+                            setView('TRADERS')
+                          }}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '80px 40px 1fr auto',
+                            alignItems: 'center',
+                            gap: 8,
+                            cursor: 'pointer',
+                            padding: '3px 4px',
+                            borderRadius: 3,
+                          }}
+                          className="clickable-distribution-row"
+                          title={`Click to view all ${item.band} traders in Managed Population`}
+                        >
+                          <span className="mono" style={{ fontSize: 10 }}>{item.band}</span>
+                          <b className="mono">{item.count}</b>
+                          <div style={{ height: 6, background: 'var(--bg-surface-3)', borderRadius: 2 }}>
+                            <div
+                              style={{
+                                height: '100%',
+                                width: `${Math.min(100, item.count * 3)}%`,
+                                background: 'var(--accent-cobalt)',
+                                borderRadius: 2,
+                              }}
+                            />
+                          </div>
+                          <span className="mono" style={{ fontSize: 8.5, color: 'var(--accent-cyan)' }}>VIEW →</span>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               </div>

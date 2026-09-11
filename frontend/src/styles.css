@@ -3875,3 +3875,7 @@ button:disabled {
     flex-wrap: wrap;
   }
 }
+
+.clickable-distribution-row:hover {
+  background: var(--bg-surface-2) !important;
+}

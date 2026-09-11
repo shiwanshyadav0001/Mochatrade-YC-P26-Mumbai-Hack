@@ -465,3 +465,35 @@ Eliminate all remaining disconnected or decorative placeholders across NETRA's 1
 - **Backend Test Suite:** 78 passed out of 78 (`python -m pytest` with 100% pass rate in 21.41s across all 4 test suites: `test_api.py`, `test_auth.py`, `test_engine.py`, `test_single_event_propagation.py`).
 - **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly with 0 errors.
 - **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
+
+---
+
+## Milestone 4.1 (Round 2): Functional Surface Transformation & Operational Depth (September 11, 2026)
+
+### Objective
+Transform remaining list-like, weakly interactive screens into fully interactive, operational surfaces. Empower operators with multi-column fleet sorting, rapid risk triage filters, instant post-injection evaluation cards, recent behavioral drift timelines, and cross-screen operational drilldowns.
+
+### Key Functional Improvements
+1. **Interactive Multi-Column Fleet Sorting (`TRADERS` View):**
+   - Implemented bidirectional column sorting on Managed Trader Population (`trader_id`, `name`, `trust_score`, `anomaly_score`, `open_case_count`, `last_activity`).
+   - Default ascending trust score sort immediately brings the lowest-trust / highest-threat accounts to the top of the queue for rapid operational triage.
+2. **Contextual Risk Log Triage & Filter Enhancements (`RISK EVENTS` View):**
+   - Added a 4-tier risk severity quick-filter strip (`ALL`, `CRITICAL ≥70`, `HIGH 40–69`, `GUARDED <40`) with live count badges.
+   - Added an event category dropdown filter supporting all 11 event types (`LOGIN`, `NEW_DEVICE`, `IP_CHANGE`, `DEPOSIT`, `TRADE`, `LEVERAGE_CHANGE`, `WITHDRAWAL`, `PASSWORD_CHANGE`, `2FA_CHANGE`, `API_KEY_CHANGE`).
+3. **Instant Post-Injection Evaluated Outcome Card (`RISK EVENTS` View):**
+   - Injected events now display an immediate high-fidelity evaluation card directly under the injection form.
+   - Displays target identity, resulting decision badge, post-injection trust score and delta, triggered rule codes, and contributing signals.
+   - Provides 1-click action shortcuts: `INSPECT IN LIVE MONITOR →`, `OPEN FORENSIC EVIDENCE DRAWER →`, and `VIEW TRADER TOPOLOGY →`.
+4. **Recent Behavioral Drift & Transitions Timeline (`TRADERS` View):**
+   - Integrated a real-time behavioral drift card into the trader profiler displaying recent trust state transitions (event type, previous trust, new trust, score delta, reason, timestamp).
+   - If uncompromised, displays a truthful operational state: "Baseline stable — zero degrading transitions logged".
+5. **Cross-Screen Operational Navigation from Fleet Telemetry (`ANALYTICS` View):**
+   - Converted Trust Score Distribution rows (`ALLOW`, `MONITOR`, `VERIFY`, `RESTRICT`, `BLOCK`) into clickable links that jump directly to the `TRADERS` directory with that risk tier pre-filtered.
+   - Converted Gateway Enforcement Counters (`PROCEED`, `CHALLENGE 2FA`, `HOLD REVIEW`, `HALT BLOCKED`) into clickable triage shortcuts filtering corresponding risk events or opening case triage.
+6. **Executive Threat Investigation Shortcut (`OVERVIEW` View):**
+   - Added an `INVESTIGATE →` direct shortcut on the Highest-Priority Threat mission banner to immediately transition the operator to Live Monitor with the targeted threat pre-selected.
+
+### Test Results & Build Verification
+- **Backend Test Suite:** 78 passed out of 78 (`pytest` 100% pass rate in 22.65s).
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) built cleanly in 129ms with 0 errors.
+- **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
