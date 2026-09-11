@@ -319,6 +319,26 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
                       <option value="FALSE_POSITIVE">STATUS: FALSE_POSITIVE</option>
                     </select>
 
+                    {activeEvent && onNavigateToEvent && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 9, padding: '4px 8px', color: 'var(--accent-amber)' }}
+                        onClick={() => onNavigateToEvent(activeEvent.event_id, activeCase.trader_id)}
+                        title="View trigger event in Live Telemetry Monitor"
+                      >
+                        VIEW EVENT ⚡
+                      </button>
+                    )}
+                    {onNavigateToAudit && (activeDecision?.audit_id || activeEvent?.audit_id || relatedAudits[0]?.audit_id) && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 9, padding: '4px 8px', color: 'var(--accent-cyan)' }}
+                        onClick={() => onNavigateToAudit(activeDecision?.audit_id || activeEvent?.audit_id || relatedAudits[0]?.audit_id, activeCase.trader_id)}
+                        title="Inspect cryptographic proof in Audit Vault"
+                      >
+                        AUDIT VAULT 🔍
+                      </button>
+                    )}
                     <button
                       className="btn btn-secondary"
                       style={{ fontSize: 9, padding: '4px 8px' }}
@@ -341,7 +361,14 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
 
                 {/* Incident Cause Callout */}
                 <div className="incident-callout-box">
-                  <div className="incident-callout-label">INCIDENT TRIGGER & ROOT CAUSE</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="incident-callout-label">INCIDENT TRIGGER &amp; ROOT CAUSE</div>
+                    {activeEvent?.event_id && (
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
+                        TRIGGER EVENT: <b style={{ color: '#fff' }}>{activeEvent.event_id}</b>
+                      </span>
+                    )}
+                  </div>
                   <div className="incident-callout-text">{activeCase.reason}</div>
                   {activeDecision && (
                     <div className="incident-decision-tag">

@@ -601,6 +601,24 @@ Resolve authentication edge-cases across all 4 operational roles (`ADMIN`, `RISK
      - Token issuance and payload validity.
 
 ### Comprehensive Test & Verification Results
-- **Backend Test Suite:** 80 passed out of 80 tests (`python -m pytest backend/` in 25.05s, 100% pass rate).
-- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 132ms with zero errors.
+- **Backend Test Suite:** 80 passed out of 80 tests (`python -m pytest backend/` in 25.18s, 100% pass rate).
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 133ms with zero errors.
 - **Git diff whitespace & formatting:** `git diff --check` passed cleanly with zero issues.
+
+---
+
+## Final Hackathon Round 1 (Checkpoint 1.2): Cross-Surface Causal Provenance & Hyperlinked Forensics (September 11, 2026)
+
+### Objective
+Provide instant, bidirectional operational navigation between every stage of the NETRA reasoning chain:
+`EVENT ↔ CONTEXT ↔ SIGNALS ↔ BASELINE ↔ TOPOLOGY ↔ TRUST IMPACT ↔ POLICY ↔ ACTION ↔ CASE ↔ AUDIT`
+
+### Key Functional Improvements
+1. **Interactive Cross-Surface Deep-Links (`LiveTelemetryMonitor.tsx`):**
+   - Added direct navigation button `TOPOLOGY GRAPH →` in Stage 05 (Topology), routing directly to the relationship graph view with cluster context.
+   - Added direct navigation button `POLICY MATRIX →` in Stage 07 (Policy), jumping into the policy threshold inspection and simulation cockpit.
+   - Added direct escalation button `VIEW IN CASES →` in Stage 08 (Action) whenever a case is created or linked to the active decision.
+2. **Forensic Case Workbench Deep-Links (`ForensicCaseWorkbench.tsx`):**
+   - Bound `activeEvent` to an instant `VIEW EVENT ⚡` action in the case cockpit header, navigating directly to the exact telemetry record in the Live Telemetry Monitor.
+   - Bound `activeDecision` and `relatedAudits` to an instant `AUDIT VAULT 🔍` action in the case cockpit header, navigating directly to the cryptographic proof ledger.
+   - Exposed trigger event ID in the Incident Trigger & Root Cause card.

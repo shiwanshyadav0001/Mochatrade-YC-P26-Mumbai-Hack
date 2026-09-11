@@ -1326,7 +1326,17 @@ export function LiveTelemetryMonitor({
               <div className="op-loop-step">
                 <div className="op-loop-step-head">
                   <span style={{ color: '#c084fc' }}>05 · TOPOLOGY</span>
-                  <span className="mono" style={{ color: 'var(--text-dim)' }}>RELATIONAL &amp; CLUSTER CORRELATION</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="mono" style={{ color: 'var(--text-dim)' }}>RELATIONAL &amp; CLUSTER CORRELATION</span>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: 8.5, padding: '1px 6px', color: '#c084fc' }}
+                      onClick={() => onNavigateView('RELATIONSHIP GRAPH')}
+                      title="Inspect entity topology in Relationship Graph"
+                    >
+                      TOPOLOGY GRAPH →
+                    </button>
+                  </div>
                 </div>
                 <div className="op-loop-step-body">
                   {(() => {
@@ -1403,9 +1413,19 @@ export function LiveTelemetryMonitor({
               <div className="op-loop-step">
                 <div className="op-loop-step-head">
                   <span style={{ color: '#34d399' }}>07 · POLICY</span>
-                  <span className="mono" style={{ color: 'var(--text-dim)' }}>
-                    POLICY: {focusedDecision?.policy_version || '2026.09-v2.1'} · CONF: {focusedDecision?.confidence || 'HIGH'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="mono" style={{ color: 'var(--text-dim)' }}>
+                      POLICY: {focusedDecision?.policy_version || '2026.09-v2.1'} · CONF: {focusedDecision?.confidence || 'HIGH'}
+                    </span>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: 8.5, padding: '1px 6px', color: '#34d399' }}
+                      onClick={() => onNavigateView('POLICIES')}
+                      title="Inspect policy matrix and simulation controls"
+                    >
+                      POLICY MATRIX →
+                    </button>
+                  </div>
                 </div>
                 <div className="op-loop-step-body">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -1477,8 +1497,18 @@ export function LiveTelemetryMonitor({
 
                   {/* Case Linkage if created */}
                   {(focusedDecision?.case_id || (focusedDecision as any)?.case?.case_id) && (
-                    <div className="mono" style={{ fontSize: 9, color: 'var(--accent-amber)', marginTop: 4 }}>
-                      CASE ESCALATION: Case #{focusedDecision?.case_id || (focusedDecision as any)?.case?.case_id} automatically assigned to Risk Operations
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: 3, padding: '4px 8px' }}>
+                      <span className="mono" style={{ fontSize: 9, color: 'var(--accent-amber)', fontWeight: 600 }}>
+                        CASE ESCALATION: Case #{focusedDecision?.case_id || (focusedDecision as any)?.case?.case_id} automatically assigned to Risk Operations
+                      </span>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 8.5, padding: '2px 7px', color: 'var(--accent-amber)' }}
+                        onClick={() => onNavigateView('CASES')}
+                        title="Open incident in Cases & Triage workbench"
+                      >
+                        VIEW IN CASES →
+                      </button>
                     </div>
                   )}
                 </div>
