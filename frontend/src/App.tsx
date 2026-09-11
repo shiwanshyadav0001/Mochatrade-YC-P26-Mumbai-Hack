@@ -8,6 +8,7 @@ import { EvidenceDrawer } from './components/EvidenceDrawer'
 import { ForensicCaseWorkbench } from './components/ForensicCaseWorkbench'
 import { InteractiveGraph } from './components/InteractiveGraph'
 import { LiveTelemetryMonitor } from './components/LiveTelemetryMonitor'
+import { OperationalDemoEngine } from './components/OperationalDemoEngine'
 import { PolicyMatrixSimulator } from './components/PolicyMatrixSimulator'
 import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
 import { ScenarioAttackReplay } from './components/ScenarioAttackReplay'
@@ -101,6 +102,8 @@ export default function App() {
   const [running, setRunning] = useState<string | null>(null)
   const [nodeInfo, setNodeInfo] = useState('')
   const [cmdOpen, setCmdOpen] = useState(false)
+  const [demoModalOpen, setDemoModalOpen] = useState(false)
+  const [simulatorMode, setSimulatorMode] = useState<'UNIFIED' | 'LEGACY'>('UNIFIED')
 
   // Day 4 Multi-Trader Intelligence State
   const [riskEvents, setRiskEvents] = useState<RiskEventItem[]>([])
@@ -1014,8 +1017,16 @@ export default function App() {
               </span>
               <button
                 className="btn btn-primary"
+                onClick={() => setDemoModalOpen(true)}
+                title="Launch Flagship Unified Operational Demonstration Engine: 10-Stage Progression, Decision Replay, What-If Counterfactuals, Blast Radius and Cryptographic Verification"
+                style={{ background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)', borderColor: '#60a5fa', fontWeight: 700 }}
+              >
+                ⚡ RUN FLAGSHIP DEMO
+              </button>
+              <button
+                className="btn btn-secondary"
                 onClick={() => runScenario('FLAGSHIP', 'NORMAL')}
-                title="Execute canonical end-to-end attack: Account takeover, privilege escalation, datacenter withdrawal restriction, case creation and SHA-256 audit commitment"
+                title="Execute background canonical end-to-end attack: Account takeover, privilege escalation, datacenter withdrawal restriction, case creation and SHA-256 audit commitment"
               >
                 RUN ATTACK SCENARIO
               </button>
@@ -2347,29 +2358,93 @@ export default function App() {
 
           {/* VIEW: SIMULATOR */}
           {view === 'SIMULATOR' && (
-            <ScenarioAttackReplay
-              trader={selected}
-              allTraders={traders}
-              decisions={decisions}
-              latestDecision={latestDecision}
-              events={events}
-              graph={graph}
-              onInspectEvidence={(d, ev, t) => {
-                setDrawerData({ decision: d, event: ev, trader: t })
-                setDrawerOpen(true)
-              }}
-              onInspectTrader={inspectTrader}
-              onSelectTrader={id => {
-                setSelectedId(id)
-                refreshSelected(id)
-              }}
-              onNavigate={setView}
-              onStepUpVerify={stepUpVerify}
-              onCreateCase={createCase}
-              onRefreshAll={refreshAll}
-              onNavigateToAudit={handleNavigateToAudit}
-              onNavigateToEvent={handleNavigateToEvent}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-surface-1)',
+                padding: '8px 14px',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-xs)',
+                flexWrap: 'wrap',
+                gap: 8,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 700 }}>
+                    SIMULATION ENVIRONMENT:
+                  </span>
+                  <button
+                    className={`btn ${simulatorMode === 'UNIFIED' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: 9.5, padding: '3px 10px' }}
+                    onClick={() => setSimulatorMode('UNIFIED')}
+                  >
+                    ⚡ FLAGSHIP OPERATIONAL DEMONSTRATION ENGINE (PHASE 5)
+                  </button>
+                  <button
+                    className={`btn ${simulatorMode === 'LEGACY' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: 9.5, padding: '3px 10px' }}
+                    onClick={() => setSimulatorMode('LEGACY')}
+                  >
+                    ATTACK REPLAY WORKBENCH
+                  </button>
+                </div>
+                <div className="mono" style={{ fontSize: 9.5, color: 'var(--text-secondary)' }}>
+                  DETERMINISTIC KERNEL REPLAY // REAL BACKEND INGESTION
+                </div>
+              </div>
+
+              {simulatorMode === 'UNIFIED' ? (
+                <OperationalDemoEngine
+                  trader={selected}
+                  allTraders={traders}
+                  decisions={decisions}
+                  latestDecision={latestDecision}
+                  events={events}
+                  cases={cases}
+                  auditRecords={audit}
+                  graph={graph}
+                  onInspectEvidence={(d, ev, t) => {
+                    setDrawerData({ decision: d, event: ev, trader: t })
+                    setDrawerOpen(true)
+                  }}
+                  onInspectTrader={inspectTrader}
+                  onSelectTrader={id => {
+                    setSelectedId(id)
+                    refreshSelected(id)
+                  }}
+                  onNavigate={setView}
+                  onNavigateToAudit={handleNavigateToAudit}
+                  onNavigateToEvent={handleNavigateToEvent}
+                  onRefreshAll={refreshAll}
+                  isModal={false}
+                />
+              ) : (
+                <ScenarioAttackReplay
+                  trader={selected}
+                  allTraders={traders}
+                  decisions={decisions}
+                  latestDecision={latestDecision}
+                  events={events}
+                  graph={graph}
+                  onInspectEvidence={(d, ev, t) => {
+                    setDrawerData({ decision: d, event: ev, trader: t })
+                    setDrawerOpen(true)
+                  }}
+                  onInspectTrader={inspectTrader}
+                  onSelectTrader={id => {
+                    setSelectedId(id)
+                    refreshSelected(id)
+                  }}
+                  onNavigate={setView}
+                  onStepUpVerify={stepUpVerify}
+                  onCreateCase={createCase}
+                  onRefreshAll={refreshAll}
+                  onNavigateToAudit={handleNavigateToAudit}
+                  onNavigateToEvent={handleNavigateToEvent}
+                />
+              )}
+            </div>
           )}
 
           {/* VIEW: AUDIT */}
@@ -2671,6 +2746,63 @@ export default function App() {
         onOpenTrader={goTrader}
         onNavigateToAudit={handleNavigateToAudit}
       />
+
+      {/* Flagship Unified Operational Demonstration Engine Modal */}
+      {demoModalOpen && (
+        <div
+          className="policy-modal-overlay"
+          onClick={() => setDemoModalOpen(false)}
+          style={{ zIndex: 1000, background: 'rgba(5, 10, 20, 0.85)', backdropFilter: 'blur(6px)' }}
+        >
+          <div
+            className="policy-modal-content"
+            style={{
+              maxWidth: 1200,
+              width: '95%',
+              padding: 0,
+              background: 'transparent',
+              border: 'none',
+              boxShadow: 'none',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <OperationalDemoEngine
+              trader={selected}
+              allTraders={traders}
+              decisions={decisions}
+              latestDecision={latestDecision}
+              events={events}
+              cases={cases}
+              auditRecords={audit}
+              graph={graph}
+              onInspectEvidence={(d, ev, t) => {
+                setDrawerData({ decision: d, event: ev, trader: t })
+                setDrawerOpen(true)
+              }}
+              onInspectTrader={inspectTrader}
+              onSelectTrader={id => {
+                setSelectedId(id)
+                refreshSelected(id)
+              }}
+              onNavigate={viewName => {
+                setDemoModalOpen(false)
+                setView(viewName)
+              }}
+              onNavigateToAudit={(auditId, subject) => {
+                setDemoModalOpen(false)
+                handleNavigateToAudit(auditId, subject)
+              }}
+              onNavigateToEvent={(eventId, traderId) => {
+                setDemoModalOpen(false)
+                handleNavigateToEvent(eventId, traderId)
+              }}
+              onRefreshAll={refreshAll}
+              onCloseModal={() => setDemoModalOpen(false)}
+              isModal={true}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

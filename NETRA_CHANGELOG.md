@@ -672,3 +672,55 @@ Solidify NETRA's causal intelligence chain (`EVENT → CONTEXT → SIGNALS → B
   - `test_single_event_propagation.py`: 7 passed
 - **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly with 0 errors.
 - **Git diff whitespace & formatting:** `git diff --check` passed cleanly with 0 warnings.
+
+---
+
+## Phase 5: Unified Operational Demonstration Engine + Demo-Ready Product Experience (September 12, 2026)
+
+### Objective
+Provide a unified, one-click operational demonstration engine enabling judges, risk officers, and technical operators to experience and audit NETRA's entire continuous intelligence loop (`EVENT → CONTEXT → SIGNALS → BASELINE → TOPOLOGY → TRUST IMPACT → POLICY → ACTION → CASE → AUDIT`) without manual API calls or disconnected navigation.
+
+### Key Architectural & Product Implementations
+
+1. **Flagship Unified Operational Demonstration Engine (`frontend/src/components/OperationalDemoEngine.tsx`):**
+   - **Canonical 10-Stage Accordion Progression:**
+     - `STAGE 01: EVENT DETECTED` (Event ID, Trader ID, Amount, Device, Network, Timestamp, Source).
+     - `STAGE 02: CONTEXT RESOLVED` (Target Profile, Known Hardware, Domestic Geography, Baseline Confidence, Segment).
+     - `STAGE 03: SIGNALS DECOMPOSED` (Signal Categories, Features, Severity 0–100, Mathematical Contribution %, Direction, Human-Readable Rationale).
+     - `STAGE 04: BASELINE COMPARISON` (Observed vs Normal Habitual Values, Variance Ratio, Absolute Deviation).
+     - `STAGE 05: TOPOLOGY DISCOVERY & BLAST RADIUS` (Direct entity hops, 2nd-degree infrastructure propagation, cluster detection).
+     - `STAGE 06: TRUST IMPACT` (Prior Score → Resulting Score, Net Delta, Principal Factors).
+     - `STAGE 07: POLICY DECISION` (5-Tier Graduated Ladder: `ALLOW` → `MONITOR` → `VERIFY` → `RESTRICT` → `BLOCK` with selected state highlight).
+     - `STAGE 08: ACTION ENFORCEMENT` (Selected Enforcement Outcome, Step-Up MFA, Execution Restrictions, Automated Lockdown).
+     - `STAGE 09: INCIDENT CASE` (Case ID, Investigation Status, Assigned Queue, Direct Forensic Workbench Jump).
+     - `STAGE 10: CRYPTOGRAPHIC AUDIT` (Audit ID, SHA-256 Hash, Chain Index, One-Click Cryptographic Proof Verification calling `/api/audit/verify`).
+   - **Interactive Incident Reconstruction Timeline & Scrubber:**
+     - Step nodes with real-time status pill badges, active stage focus, and jump-to-step capability.
+     - Playback controls: Play / Pause, Step Forward, Step Back, Speed Toggle (1.5s / 0.7s), Baseline Reset.
+   - **Multi-Scenario Switcher:**
+     - Supports 6 deterministic scenarios: `FLAGSHIP` (Account Takeover & Coordinated Withdrawal), `TRAVEL` (Verified Cross-Border Access), `FRAUD_RING` (Collusive Sybil Multi-Account Ring), `TAKEOVER` (Hostile Credential Takeover), `ATTACK_SURGE` (Compounding Anomaly Attack Surge), `NORMAL_ACTIVITY` (Routine Habitual Session).
+   - **Interactive "What If?" Counterfactual Simulation Cockpit:**
+     - Presets: *Recognized Primary Device*, *Normal Financial Volume ($3,000)*, *Clean ISP Network*, *Successful Step-Up Verification*, *Full Habitual Alignment*.
+     - Live simulation calling `POST /api/counterfactual/simulate` displaying original vs counterfactual trust scores, policy transitions, and mitigated signal badges without mutating live engine state.
+
+2. **Attack Path & Blast Radius Visualization (`frontend/src/components/InteractiveGraph.tsx`):**
+   - Added `ATTACK PATH & BLAST RADIUS` toggle in the graph toolbar.
+   - Attack path highlighting with pulsing crimson/amber edge flows and edge relationship labels (`USES_DEVICE`, `ACCESSES_FROM_IP`, `HOLDS_WALLET`).
+   - Floating real-time **Blast Radius HUD Overlay** detailing direct and 2nd-degree affected entities, compromised infrastructure, and collateral risk propagation.
+
+3. **Continuous Trajectory & Prior State Alignment (`backend/engine.py`):**
+   - Enhanced `simulate_counterfactual` in `NetraEngine` to resolve the trader's prior score from previous transitions (`self.transitions[trader_id]`), ensuring that sensitivity simulations evaluate what trust would be relative to the state immediately preceding the event.
+
+4. **Surface Synchronization & Entry Points (`frontend/src/App.tsx`, `CommandPalette.tsx`):**
+   - Added high-visibility `⚡ RUN FLAGSHIP DEMO` button to the primary pipeline strip in the top header.
+   - Embedded `OperationalDemoEngine` directly into the `SIMULATOR` view with mode switcher between Flagship Engine and Replay Workbench.
+   - Added full-screen modal launcher for seamless, distraction-free demonstrations from any view.
+   - Connected cross-surface deep links to `Live Telemetry Monitor`, `Forensic Case Workbench`, and `Cryptographic Audit Vault`.
+   - Added `FLAGSHIP // Unified Operational Demonstration Engine` entry in Institutional Command Palette (Cmd+K / Ctrl+K).
+
+### Verification
+- **Backend Test Suite:** 97/97 tests passing (`backend\.venv\Scripts\python.exe -m pytest backend/`).
+- **Frontend Production Build:** Clean build in 151ms (`tsc -b && vite build`) with zero TypeScript errors.
+- **Runtime API Verification:** Deterministic execution of 6-step Flagship scenario, counterfactual sensitivity simulation, and cryptographic audit verification completed successfully.
+- **Whitespace & Formatting:** `git diff --check` clean with 0 warnings.
+- **Identity Check:** Zero legacy branding tokens in `frontend/src/` or `backend/`.
