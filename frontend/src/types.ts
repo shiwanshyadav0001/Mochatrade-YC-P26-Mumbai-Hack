@@ -80,6 +80,7 @@ export type Event = {
   wallet_address?: string
   source: string
   risk_relevance: string
+  context?: Record<string, any>
   metadata?: Record<string, any>
   audit_id?: string
   audit_hash?: string

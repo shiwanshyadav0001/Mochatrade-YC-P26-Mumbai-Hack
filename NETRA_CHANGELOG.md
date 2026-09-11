@@ -567,3 +567,40 @@ Eliminate disconnected surfaces, broken data flows, and race conditions by intro
 - **Integration Test Added:** `test_canonical_processed_trust_decision_and_flagship_scenario` verifying all 6 stages of the Flagship scenario.
 - **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 128ms with 0 errors.
 - **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
+
+---
+
+## Final Hackathon Round 1 (Checkpoint 1.1): Role Authentication Hardening & 9-Stage Intelligence Chain Standardization (September 11, 2026)
+
+### Objective
+Resolve authentication edge-cases across all 4 operational roles (`ADMIN`, `RISK_ANALYST`, `INVESTIGATOR`, `VIEWER`), eliminate legacy 6-step loop remnants in favor of NETRA's authoritative 9-stage intelligence chain, and ensure deterministic, error-free operator workflows.
+
+### Key Architectural & Functional Improvements
+1. **Role Authentication & Dev-User Resolution (`backend/auth.py`):**
+   - Added `"risk_analyst"` alias to `_get_dev_users()` alongside `"analyst"`.
+   - Updated `authenticate_user()` to normalize usernames (`.strip().lower()`) and support canonical role names as credentials identifiers.
+   - Guaranteed that whether an operator inputs `"analyst"`, `"risk_analyst"`, or uppercase `"RISK_ANALYST"`, authentication succeeds with role `RISK_ANALYST` and valid JWT token.
+2. **Robust Frontend Environment Credential Resolver (`frontend/src/api.ts`):**
+   - Replaced dynamic Vite `import.meta.env[...]` object indexing (which returns `undefined` in production bundles) with a static switch-based `getEnvCredentials(role)` helper.
+   - Supports both `VITE_NETRA_RISK_ANALYST_USERNAME` and `VITE_NETRA_ANALYST_USERNAME` with deterministic fallback to secure development defaults.
+3. **Authoritative 9-Stage Intelligence Chain Alignment (`frontend/src/components/LiveTelemetryMonitor.tsx`):**
+   - Migrated the Live Telemetry Stepper from the legacy 6-step loop to NETRA's authoritative 9-stage sequence:
+     - `01 · EVENT`: Canonical event identity, source, telemetry payload, hardware ID, IP, ASN network classification, geo location, destination wallet.
+     - `02 · CONTEXT`: Hardware recognition status (known vs novel), network routing security, event classification, contextual dictionary metrics.
+     - `03 · SIGNALS`: Multi-dimensional behavioral anomaly detection with severity ratings and category badges.
+     - `04 · BASELINE`: Individual trader profile conformity analysis vs habitual deposit norms, max leverage, known devices, and circadian habits.
+     - `05 · TOPOLOGY`: Entity graph correlation, unicast validation, and shared infrastructure cluster detection.
+     - `06 · TRUST IMPACT`: Continuous dynamic score delta (`prev` -> `curr`), score shift badge, and risk tier pill.
+     - `07 · POLICY`: Graduated 5-step policy ladder evaluation (`ALLOW` -> `MONITOR` -> `VERIFY` -> `RESTRICT` -> `BLOCK`), confidence rating, policy version.
+     - `08 · ACTION`: Operational enforcement execution details, SOP recommendation, automated Case linkage.
+     - `09 · AUDIT`: Cryptographic audit provenance, record ID, inline SHA-256 pre-image inspector, and direct Audit Vault deep-link.
+4. **Automated Role Verification Test Added (`backend/test_auth.py`):**
+   - Added `test_dev_user_risk_analyst_and_case_insensitive_logins` validating:
+     - Default dev credentials for all 4 roles (`admin`, `risk_analyst`, `investigator`, `viewer`).
+     - Case-insensitive login (`RISK_ANALYST`, `ANALYST`, `risk_analyst`, `analyst`).
+     - Token issuance and payload validity.
+
+### Comprehensive Test & Verification Results
+- **Backend Test Suite:** 80 passed out of 80 tests (`python -m pytest backend/` in 25.05s, 100% pass rate).
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 132ms with zero errors.
+- **Git diff whitespace & formatting:** `git diff --check` passed cleanly with zero issues.

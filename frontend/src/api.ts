@@ -35,6 +35,33 @@ const DEV_CREDENTIALS: Record<UserRole, { username: string; password: string }> 
   VIEWER: { username: 'viewer', password: 'viewer-pass' },
 }
 
+const getEnvCredentials = (role: UserRole): { username?: string; password?: string } => {
+  switch (role) {
+    case 'ADMIN':
+      return {
+        username: import.meta.env.VITE_NETRA_ADMIN_USERNAME,
+        password: import.meta.env.VITE_NETRA_ADMIN_PASSWORD,
+      }
+    case 'RISK_ANALYST':
+      return {
+        username: import.meta.env.VITE_NETRA_RISK_ANALYST_USERNAME || import.meta.env.VITE_NETRA_ANALYST_USERNAME,
+        password: import.meta.env.VITE_NETRA_RISK_ANALYST_PASSWORD || import.meta.env.VITE_NETRA_ANALYST_PASSWORD,
+      }
+    case 'INVESTIGATOR':
+      return {
+        username: import.meta.env.VITE_NETRA_INVESTIGATOR_USERNAME,
+        password: import.meta.env.VITE_NETRA_INVESTIGATOR_PASSWORD,
+      }
+    case 'VIEWER':
+      return {
+        username: import.meta.env.VITE_NETRA_VIEWER_USERNAME,
+        password: import.meta.env.VITE_NETRA_VIEWER_PASSWORD,
+      }
+    default:
+      return {}
+  }
+}
+
 let currentRole: UserRole = (sessionStorage.getItem('netra_actor_role') as UserRole) || 'ADMIN'
 let accessToken = sessionStorage.getItem('netra_access_token') || ''
 
@@ -45,10 +72,9 @@ export const clearAuthSession = (): void => {
 }
 
 export const setActorRole = async (role: UserRole): Promise<void> => {
-  const envUser = import.meta.env[`VITE_NETRA_${role}_USERNAME`] as string | undefined
-  const envPass = import.meta.env[`VITE_NETRA_${role}_PASSWORD`] as string | undefined
-  const username = envUser || DEV_CREDENTIALS[role]?.username
-  const password = envPass || DEV_CREDENTIALS[role]?.password
+  const envCreds = getEnvCredentials(role)
+  const username = envCreds.username || DEV_CREDENTIALS[role]?.username
+  const password = envCreds.password || DEV_CREDENTIALS[role]?.password
   if (!username || !password) {
     throw new ApiError(400, 'Bad Request', `Authentication credentials are not configured for ${role}`)
   }

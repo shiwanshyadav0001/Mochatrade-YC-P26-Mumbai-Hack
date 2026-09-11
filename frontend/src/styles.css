@@ -522,7 +522,7 @@ button:disabled {
 .col-4  { grid-column: span 4; }
 .col-3  { grid-column: span 3; }
 
-/* Institutional Pipeline Strip (OBSERVE → BASELINE → CONNECT → SCORE → EXPLAIN) */
+/* Institutional Pipeline Strip (01 EVENT → 02 CONTEXT → 03 SIGNALS → 04 BASELINE → 05 TOPOLOGY → 06 TRUST IMPACT → 07 POLICY → 08 ACTION → 09 AUDIT) */
 .pipeline-strip {
   background: var(--bg-surface-1);
   border: 1px solid var(--border-subtle);

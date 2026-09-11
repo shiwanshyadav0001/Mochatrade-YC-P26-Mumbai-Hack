@@ -55,6 +55,31 @@ def test_login_issues_signed_token_and_health_reports_authentication(client):
     assert health.json()["rbac_enabled"] is True
 
 
+def test_dev_user_risk_analyst_and_case_insensitive_logins(monkeypatch):
+    monkeypatch.delenv("NETRA_AUTH_USERS_JSON", raising=False)
+    monkeypatch.setenv("NETRA_JWT_SECRET", "test-only-signing-secret")
+    client = TestClient(main.app)
+
+    # Test both 'analyst' and 'risk_analyst' and uppercase 'RISK_ANALYST'
+    for u in ["analyst", "risk_analyst", "RISK_ANALYST", "ANALYST"]:
+        res = client.post("/api/auth/login", json={"username": u, "password": "analyst-pass"})
+        assert res.status_code == 200, f"Login failed for alias {u}: {res.text}"
+        data = res.json()
+        assert data["role"] == "RISK_ANALYST"
+        assert "access_token" in data
+
+    # Test all 4 standard roles with dev credentials
+    for u, p, r in [
+        ("admin", "admin-pass", "ADMIN"),
+        ("risk_analyst", "analyst-pass", "RISK_ANALYST"),
+        ("investigator", "investigator-pass", "INVESTIGATOR"),
+        ("viewer", "viewer-pass", "VIEWER"),
+    ]:
+        res = client.post("/api/auth/login", json={"username": u, "password": p})
+        assert res.status_code == 200
+        assert res.json()["role"] == r
+
+
 def test_role_header_cannot_spoof_authentication(client):
     response = client.get("/api/policies", headers={"X-Actor-Role": "ADMIN", "X-Actor-Id": "attacker"})
 

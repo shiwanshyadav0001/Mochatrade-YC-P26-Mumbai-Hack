@@ -1184,13 +1184,15 @@ export function LiveTelemetryMonitor({
               </div>
             )}
 
-            {/* 6-Step Operational Intelligence Loop */}
+            {/* 9-Stage Authoritative Continuous Trust Intelligence Chain */}
             <div className="op-loop-stepper">
-              {/* STEP 1: EVENT (OBSERVED TELEMETRY) */}
+              {/* STAGE 01: EVENT */}
               <div className="op-loop-step">
                 <div className="op-loop-step-head">
-                  <span style={{ color: '#38bdf8' }}>01 · EVENT OBSERVED</span>
-                  <span className="mono" style={{ color: 'var(--text-dim)' }}>SOURCE: {focusedEvent.source || 'LIVE'}</span>
+                  <span style={{ color: '#38bdf8' }}>01 · EVENT</span>
+                  <span className="mono" style={{ color: 'var(--text-dim)' }}>
+                    {focusedEvent.event_id ? `ID: ${focusedEvent.event_id.slice(0, 10)} · ` : ''}SOURCE: {focusedEvent.source || 'LIVE'}
+                  </span>
                 </div>
                 <div className="op-loop-step-body">
                   <div style={{ fontWeight: 600, fontSize: 12, color: '#fff' }}>
@@ -1207,33 +1209,46 @@ export function LiveTelemetryMonitor({
                 </div>
               </div>
 
-              {/* STEP 2: BASELINE COMPARISON */}
+              {/* STAGE 02: CONTEXT */}
               <div className="op-loop-step">
                 <div className="op-loop-step-head">
-                  <span style={{ color: focusedBaselineAnalysis?.isNormal ? 'var(--state-normal)' : 'var(--state-elevated)' }}>
-                    02 · INDIVIDUAL BASELINE
-                  </span>
-                  <span className="mono" style={{ color: focusedBaselineAnalysis?.isNormal ? 'var(--state-normal)' : 'var(--state-critical)' }}>
-                    {focusedBaselineAnalysis?.deviationBadge || 'BASELINE CONFORMANT'}
-                  </span>
+                  <span style={{ color: '#60a5fa' }}>02 · CONTEXT</span>
+                  <span className="mono" style={{ color: 'var(--text-dim)' }}>ENVIRONMENTAL &amp; ACTION TELEMETRY</span>
                 </div>
                 <div className="op-loop-step-body">
-                  <div style={{ fontSize: 10.5, color: focusedBaselineAnalysis?.isNormal ? 'var(--text-primary)' : '#fca5a5' }}>
-                    {focusedBaselineAnalysis?.summary || 'Establishing baseline norms (insufficient historical telemetry)'}
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 10.5 }}>
+                    <div>
+                      <span className="mono" style={{ color: 'var(--text-dim)', fontSize: 9 }}>DEVICE STATUS: </span>
+                      <span style={{ color: focusedTrader?.baseline?.known_devices?.includes(focusedEvent.device_id || '') ? 'var(--state-normal)' : '#f59e0b', fontWeight: 600 }}>
+                        {focusedTrader?.baseline?.known_devices?.includes(focusedEvent.device_id || '') ? 'RECOGNIZED HARDWARE' : 'NEW / UNRECOGNIZED HARDWARE'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="mono" style={{ color: 'var(--text-dim)', fontSize: 9 }}>NETWORK: </span>
+                      <span style={{ color: (focusedEvent.network_type === 'datacenter' || focusedEvent.network_type === 'vpn' || focusedEvent.network_type === 'tor') ? 'var(--state-critical)' : 'var(--state-normal)', fontWeight: 600 }}>
+                        {(focusedEvent.network_type || 'RESIDENTIAL').toUpperCase()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="mono" style={{ color: 'var(--text-dim)', fontSize: 9 }}>ACTION TYPE: </span>
+                      <span style={{ color: '#fff' }}>
+                        {focusedEvent.event_type.replace(/_/g, ' ')}
+                      </span>
+                    </div>
                   </div>
-                  {focusedTrader?.baseline && (
-                    <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 3 }}>
-                      HABITUAL MAX DEP: {focusedTrader.baseline.deposit_amount != null ? money(focusedTrader.baseline.deposit_amount) : '—'} │ LEV NORM: ≤{focusedTrader.baseline.leverage ? `${focusedTrader.baseline.leverage}×` : '—'} │ KNOWN HW: {focusedTrader.baseline.known_devices?.length ?? 0} │ GEO: {focusedTrader.baseline.countries?.join(', ') || '—'}
+                  {focusedEvent.context && Object.keys(focusedEvent.context).length > 0 && (
+                    <div className="mono" style={{ fontSize: 9, color: 'var(--text-secondary)', marginTop: 4 }}>
+                      CONTEXT METRICS: {Object.entries(focusedEvent.context).map(([k, v]) => `${k}=${v}`).join(' │ ')}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* STEP 3: SIGNALS (SEQUENCE, TOPOLOGY, ANOMALY) */}
+              {/* STAGE 03: SIGNALS */}
               <div className="op-loop-step">
                 <div className="op-loop-step-head">
-                  <span style={{ color: '#fb923c' }}>03 · SIGNALS &amp; ATTRIBUTION</span>
-                  <span className="mono" style={{ color: 'var(--text-dim)' }}>WHY NETRA CARED</span>
+                  <span style={{ color: '#fb923c' }}>03 · SIGNALS</span>
+                  <span className="mono" style={{ color: 'var(--text-dim)' }}>MULTI-DIMENSIONAL ATTRIBUTION</span>
                 </div>
                 <div className="op-loop-step-body">
                   {/* Signals List from actual backend decision */}
@@ -1282,31 +1297,65 @@ export function LiveTelemetryMonitor({
                       ● NO MATERIAL ELEVATED RISK SIGNALS — ROUTINE CONFORMANT INGESTION
                     </div>
                   )}
+                </div>
+              </div>
 
-                  {/* Topology Cluster status if any */}
+              {/* STAGE 04: BASELINE */}
+              <div className="op-loop-step">
+                <div className="op-loop-step-head">
+                  <span style={{ color: focusedBaselineAnalysis?.isNormal ? 'var(--state-normal)' : 'var(--state-elevated)' }}>
+                    04 · BASELINE
+                  </span>
+                  <span className="mono" style={{ color: focusedBaselineAnalysis?.isNormal ? 'var(--state-normal)' : 'var(--state-critical)' }}>
+                    {focusedBaselineAnalysis?.deviationBadge || 'BASELINE CONFORMANT'}
+                  </span>
+                </div>
+                <div className="op-loop-step-body">
+                  <div style={{ fontSize: 10.5, color: focusedBaselineAnalysis?.isNormal ? 'var(--text-primary)' : '#fca5a5' }}>
+                    {focusedBaselineAnalysis?.summary || 'Establishing baseline norms (insufficient historical telemetry)'}
+                  </div>
+                  {focusedTrader?.baseline && (
+                    <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 3 }}>
+                      HABITUAL MAX DEP: {focusedTrader.baseline.deposit_amount != null ? money(focusedTrader.baseline.deposit_amount) : '—'} │ LEV NORM: ≤{focusedTrader.baseline.leverage ? `${focusedTrader.baseline.leverage}×` : '—'} │ KNOWN HW: {focusedTrader.baseline.known_devices?.length ?? 0} │ GEO: {focusedTrader.baseline.countries?.join(', ') || '—'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* STAGE 05: TOPOLOGY */}
+              <div className="op-loop-step">
+                <div className="op-loop-step-head">
+                  <span style={{ color: '#c084fc' }}>05 · TOPOLOGY</span>
+                  <span className="mono" style={{ color: 'var(--text-dim)' }}>RELATIONAL &amp; CLUSTER CORRELATION</span>
+                </div>
+                <div className="op-loop-step-body">
                   {(() => {
                     const cluster = graph?.clusters?.find(c => Array.isArray(c.affected_traders) && c.affected_traders.includes(focusedEvent.trader_id))
                     if (cluster) {
                       return (
-                        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, fontSize: 9.5 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
                           <span className="op-loop-signal-bullet" style={{ background: 'rgba(220, 38, 38, 0.2)', color: '#f87171', border: '1px solid var(--state-critical)' }}>
-                            TOPOLOGY
+                            SHARED INFRASTRUCTURE
                           </span>
                           <span style={{ color: '#fca5a5' }}>
-                            Linked to Cluster #{cluster.cluster_id} ({cluster.cluster_type.replace(/_/g, ' ')}) — shared entities detected
+                            Linked to Cluster #{cluster.cluster_id} ({cluster.cluster_type.replace(/_/g, ' ')}) — shared entities detected across {cluster.affected_traders?.length || 1} traders
                           </span>
                         </div>
                       )
                     }
-                    return null
+                    return (
+                      <div className="mono" style={{ fontSize: 9.5, color: 'var(--state-normal)' }}>
+                        ✓ UNICAST TOPOLOGY — No unauthorized cross-trader entity sharing detected for device or IP
+                      </div>
+                    )
                   })()}
                 </div>
               </div>
 
-              {/* STEP 4: TRUST IMPACT */}
+              {/* STAGE 06: TRUST IMPACT */}
               <div className="op-loop-step">
                 <div className="op-loop-step-head">
-                  <span style={{ color: '#a78bfa' }}>04 · TRUST IMPACT</span>
+                  <span style={{ color: '#a78bfa' }}>06 · TRUST IMPACT</span>
                   <span className="mono" style={{ color: 'var(--text-dim)' }}>CONTINUOUS STATE</span>
                 </div>
                 <div className="op-loop-step-body">
@@ -1350,12 +1399,12 @@ export function LiveTelemetryMonitor({
                 </div>
               </div>
 
-              {/* STEP 5: PROPORTIONAL POLICY DECISION & ACTION */}
+              {/* STAGE 07: POLICY */}
               <div className="op-loop-step">
                 <div className="op-loop-step-head">
-                  <span style={{ color: '#34d399' }}>05 · PROPORTIONAL POLICY DECISION &amp; ACTION</span>
+                  <span style={{ color: '#34d399' }}>07 · POLICY</span>
                   <span className="mono" style={{ color: 'var(--text-dim)' }}>
-                    LATENCY: {focusedDecision?.processing_latency_ms ?? 1.2}ms
+                    POLICY: {focusedDecision?.policy_version || '2026.09-v2.1'} · CONF: {focusedDecision?.confidence || 'HIGH'}
                   </span>
                 </div>
                 <div className="op-loop-step-body">
@@ -1364,17 +1413,11 @@ export function LiveTelemetryMonitor({
                       <span className={`decision-text ${(focusedDecision?.decision || 'ALLOW').toLowerCase()}`} style={{ fontSize: 16 }}>
                         {focusedDecision?.decision || 'ALLOW'}
                       </span>
-                      <span className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 8 }}>
-                        POLICY: {focusedDecision?.policy_version || '2026.09-v2.1'}
-                      </span>
                     </div>
-                    <span className="mono" style={{ fontSize: 9, color: 'var(--text-secondary)' }}>
-                      CONF: {focusedDecision?.confidence || 'HIGH'}
-                    </span>
                   </div>
 
                   {/* Graduated Policy Ladder */}
-                  <div className="policy-ladder" style={{ marginBottom: 6 }}>
+                  <div className="policy-ladder" style={{ marginBottom: 4 }}>
                     <div className={`ladder-step ${(focusedDecision?.decision || 'ALLOW') === 'ALLOW' ? 'active allow' : ''}`}>
                       <span>ALLOW</span>
                       <small>Normal activity permitted</small>
@@ -1396,7 +1439,18 @@ export function LiveTelemetryMonitor({
                       <small>Critical halt / session isolated</small>
                     </div>
                   </div>
+                </div>
+              </div>
 
+              {/* STAGE 08: ACTION */}
+              <div className="op-loop-step">
+                <div className="op-loop-step-head">
+                  <span style={{ color: '#f59e0b' }}>08 · ACTION</span>
+                  <span className="mono" style={{ color: 'var(--text-dim)' }}>
+                    LATENCY: {focusedDecision?.processing_latency_ms ?? 1.2}ms
+                  </span>
+                </div>
+                <div className="op-loop-step-body">
                   {/* Enforcement action / reason */}
                   <div style={{ fontSize: 10.5, color: '#fff', background: 'var(--bg-surface-2)', padding: '6px 10px', borderRadius: 3, borderLeft: '2px solid var(--accent-cobalt)' }}>
                     <b>ENFORCEMENT:</b> {
@@ -1420,13 +1474,20 @@ export function LiveTelemetryMonitor({
                       SOP: {focusedDecision.explanation.recommendation}
                     </div>
                   )}
+
+                  {/* Case Linkage if created */}
+                  {(focusedDecision?.case_id || (focusedDecision as any)?.case?.case_id) && (
+                    <div className="mono" style={{ fontSize: 9, color: 'var(--accent-amber)', marginTop: 4 }}>
+                      CASE ESCALATION: Case #{focusedDecision?.case_id || (focusedDecision as any)?.case?.case_id} automatically assigned to Risk Operations
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* STEP 6: CRYPTOGRAPHIC AUDIT PROVENANCE */}
+              {/* STAGE 09: AUDIT */}
               <div className="op-loop-step">
                 <div className="op-loop-step-head">
-                  <span style={{ color: 'var(--accent-cyan)' }}>06 · AUDIT PROVENANCE</span>
+                  <span style={{ color: 'var(--accent-cyan)' }}>09 · AUDIT</span>
                   <span className="mono" style={{ color: (exactDecision?.audit_id || focusedEvent.audit_id) ? 'var(--state-normal)' : 'var(--text-dim)' }}>
                     {(exactDecision?.audit_id || focusedEvent.audit_id) ? '✓ VERIFIED SHA-256' : 'NOT AVAILABLE'}
                   </span>

@@ -35,6 +35,7 @@ def _get_dev_users() -> dict[str, dict[str, str]]:
         _DEV_USERS_CACHE = {
             "admin": {"role": "ADMIN", "password_hash": hash_password("admin-pass", salt=b"netra-dev-admin-salt")},
             "analyst": {"role": "RISK_ANALYST", "password_hash": hash_password("analyst-pass", salt=b"netra-dev-analyst-salt")},
+            "risk_analyst": {"role": "RISK_ANALYST", "password_hash": hash_password("analyst-pass", salt=b"netra-dev-analyst-salt")},
             "investigator": {"role": "INVESTIGATOR", "password_hash": hash_password("investigator-pass", salt=b"netra-dev-invest-salt")},
             "viewer": {"role": "VIEWER", "password_hash": hash_password("viewer-pass", salt=b"netra-dev-viewer-salt")},
         }
@@ -103,10 +104,19 @@ def load_users() -> dict[str, dict[str, str]]:
 
 
 def authenticate_user(username: str, password: str) -> dict[str, str]:
-    user = load_users().get(username)
+    normalized = (username or "").strip().lower()
+    users = load_users()
+    user = users.get(normalized)
+    if not user:
+        # Fallback: check if the username was supplied as a canonical role name (e.g. "RISK_ANALYST")
+        for u, data in users.items():
+            if data.get("role", "").lower() == normalized or u.lower() == normalized:
+                user = data
+                normalized = u
+                break
     if not user or not verify_password(password, user["password_hash"]):
         raise _unauthorized("Invalid username or password")
-    return {"actor_id": username, "role": user["role"]}
+    return {"actor_id": normalized, "role": user["role"]}
 
 
 def create_access_token(actor: dict[str, str], now: int | None = None) -> tuple[str, int]:
