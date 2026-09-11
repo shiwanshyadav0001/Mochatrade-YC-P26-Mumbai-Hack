@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-
 SESSION_RISK_STATES = {
     "SESSION_NORMAL": "Normal baseline conforming session",
     "SESSION_MONITORED": "Monitored session with minor anomalies or velocity shifts",
@@ -12,7 +11,6 @@ SESSION_RISK_STATES = {
     "SESSION_RESTRICTED": "Restricted session due to elevated risk or verification challenge",
     "SESSION_TERMINATED": "Terminated session due to critical compromise or repeated verification failures",
 }
-
 
 
 @dataclass
