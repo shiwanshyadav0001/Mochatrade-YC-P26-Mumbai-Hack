@@ -1389,6 +1389,7 @@ export default function App() {
                     onEvaluateAction={evaluateAction}
                     evaluatingAction={evaluatingAction}
                     actionEvalResult={actionEvalResult}
+                    onExecuteStepUp={handleStepUpVerify}
                   />
                 </div>
               </div>
@@ -1587,6 +1588,7 @@ export default function App() {
               records={observatory}
               protocols={protocols}
               selectedId={selectedId}
+              events={events}
               onSelectTrader={id => {
                 setSelectedId(id)
                 refreshSelected(id)
@@ -3070,6 +3072,7 @@ function PersistentDecisionPanel({
   onEvaluateAction,
   evaluatingAction,
   actionEvalResult,
+  onExecuteStepUp,
 }: {
   decision?: Decision
   trader?: Trader
@@ -3079,6 +3082,7 @@ function PersistentDecisionPanel({
   onEvaluateAction?: (action: string) => void
   evaluatingAction?: boolean
   actionEvalResult?: ActionEvaluationResult | null
+  onExecuteStepUp?: (traderId: string, verificationType: string, status: 'SUCCESS' | 'FAILED') => Promise<void>
 }) {
   if (!decision) {
     return (
@@ -3199,6 +3203,123 @@ function PersistentDecisionPanel({
             {actionEvalResult.action}: {actionEvalResult.decision} ({actionEvalResult.allowed ? 'PERMITTED' : 'HOLD'})
           </span>
           <span style={{ color: 'var(--text-secondary)' }}>{actionEvalResult.reason}</span>
+        </div>
+      )}
+
+      {/* Three-Stage Operational Enforcement Flow */}
+      {actionEvalResult && actionEvalResult.trader_id === (trader?.trader_id || decision.trader_id) && (
+        <div
+          style={{
+            padding: '10px 12px',
+            background: 'var(--bg-surface-0)',
+            borderTop: '1px solid var(--border-subtle)',
+            borderBottom: '1px solid var(--border-subtle)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span className="mono" style={{ fontSize: 9.5, color: '#93c5fd', fontWeight: 700 }}>
+              THREE-STAGE ENFORCEMENT LIFECYCLE:
+            </span>
+            <span
+              className={`status-pill ${actionEvalResult.allowed ? 'normal' : 'critical'}`}
+              style={{ fontSize: 8 }}
+            >
+              {actionEvalResult.allowed ? 'PERMITTED' : actionEvalResult.requires_step_up ? 'CHALLENGE ACTIVE' : 'CONTAINED'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {/* Stage 1: Contextual Interception */}
+            <div
+              style={{
+                padding: '6px 8px',
+                background: 'var(--bg-surface-1)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-xs)',
+                display: 'flex',
+                gap: 8,
+                alignItems: 'flex-start',
+              }}
+            >
+              <span className="mono" style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-blue)', background: 'rgba(59,130,246,0.1)', padding: '2px 5px', borderRadius: 2 }}>
+                STAGE 01
+              </span>
+              <div style={{ flex: 1, fontSize: 9 }}>
+                <strong style={{ color: '#fff', display: 'block' }}>Contextual Risk Interception</strong>
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  Action '{actionEvalResult.action}' intercepted. Trust score is {Math.round(actionEvalResult.trust_score)}/100. Policy evaluated: {actionEvalResult.decision}.
+                </span>
+              </div>
+            </div>
+
+            {/* Stage 2: Inline Biometric Authentication Challenge */}
+            <div
+              style={{
+                padding: '6px 8px',
+                background: 'var(--bg-surface-1)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-xs)',
+                display: 'flex',
+                gap: 8,
+                alignItems: 'flex-start',
+              }}
+            >
+              <span className="mono" style={{ fontSize: 9, fontWeight: 700, color: '#fbbf24', background: 'rgba(245,158,11,0.1)', padding: '2px 5px', borderRadius: 2 }}>
+                STAGE 02
+              </span>
+              <div style={{ flex: 1, fontSize: 9 }}>
+                <strong style={{ color: '#fff', display: 'block' }}>In-Line Biometric Verification</strong>
+                <span style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                  {actionEvalResult.requires_step_up
+                    ? 'Step-up authentication required before execution. Complete WebAuthn TouchID / FaceID challenge:'
+                    : 'Session verified against contextual baseline parameters.'}
+                </span>
+                {actionEvalResult.requires_step_up && onExecuteStepUp && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ fontSize: 9, padding: '4px 8px', flex: 1 }}
+                      onClick={() => onExecuteStepUp(trader?.trader_id || decision.trader_id, '2FA_BIOMETRIC', 'SUCCESS')}
+                    >
+                      ⚡ AUTHORIZE (BIOMETRIC PASS)
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: 9, padding: '4px 8px', color: 'var(--state-critical)', borderColor: 'var(--state-critical-border)' }}
+                      onClick={() => onExecuteStepUp(trader?.trader_id || decision.trader_id, '2FA_BIOMETRIC', 'FAILED')}
+                    >
+                      ✕ FAIL (LOCK SESSION)
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Stage 3: Enforcement & Audit Resolution */}
+            <div
+              style={{
+                padding: '6px 8px',
+                background: 'var(--bg-surface-1)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-xs)',
+                display: 'flex',
+                gap: 8,
+                alignItems: 'flex-start',
+              }}
+            >
+              <span className="mono" style={{ fontSize: 9, fontWeight: 700, color: actionEvalResult.allowed ? 'var(--state-normal)' : 'var(--state-critical)', background: actionEvalResult.allowed ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', padding: '2px 5px', borderRadius: 2 }}>
+                STAGE 03
+              </span>
+              <div style={{ flex: 1, fontSize: 9 }}>
+                <strong style={{ color: '#fff', display: 'block' }}>Policy Enforcement Resolution</strong>
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  {actionEvalResult.allowed
+                    ? 'Operation released to order matching engine. Verified evidentiary proof recorded in Audit Vault.'
+                    : 'Execution arrested at API gateway. P-03 containment active. Critical forensics case triaged.'}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

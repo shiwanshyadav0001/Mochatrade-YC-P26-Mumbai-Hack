@@ -150,6 +150,9 @@ export function ClientActivityPresentation({
                 <p className="mono" style={{ margin: 0, fontSize: 8.5, color: 'var(--text-dim)', lineHeight: 1.3 }}>
                   • DEMONSTRATION VENUE STREAM: Ingested order actions immediately feed NETRA's continuous Bayesian trust decay, behavioral anomaly models, and policy enforcement gateway.
                 </p>
+                <p className="mono" style={{ margin: '4px 0 0 0', fontSize: 8.5, color: '#93c5fd', lineHeight: 1.3 }}>
+                  • CONTINUOUS TRUST DIFFERENTIATOR: Traditional platforms verify identity once at login. NETRA continuously gates high-sensitivity actions (withdrawals, 50x leverage) against individual contextual baselines.
+                </p>
               </div>
             </div>
           </div>

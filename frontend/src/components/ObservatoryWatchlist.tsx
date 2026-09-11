@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react'
-import type { ObservatoryOperationalState, ObservatoryRecord, SecurityProtocol } from '../types'
+import type { Event, ObservatoryOperationalState, ObservatoryRecord, SecurityProtocol } from '../types'
 
 interface ObservatoryWatchlistProps {
   records: ObservatoryRecord[]
   protocols: SecurityProtocol[]
   selectedId: string
+  events?: Event[]
   onSelectTrader: (traderId: string) => void
   onOpenStepUpModal: (traderId: string) => void
   onOpenRecoveryModal: (traderId: string) => void
@@ -19,6 +20,7 @@ export function ObservatoryWatchlist({
   records,
   protocols,
   selectedId,
+  events,
   onSelectTrader,
   onOpenStepUpModal,
   onOpenRecoveryModal,
@@ -32,6 +34,11 @@ export function ObservatoryWatchlist({
   const selectedRecord = useMemo(() => {
     return records.find(r => r.trader_id === selectedId) || records[0]
   }, [records, selectedId])
+
+  const targetEvents = useMemo(() => {
+    if (!events || !selectedRecord) return []
+    return events.filter(e => e.trader_id === selectedRecord.trader_id)
+  }, [events, selectedRecord])
 
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
@@ -145,6 +152,38 @@ export function ObservatoryWatchlist({
               </button>
             </>
           )}
+        </div>
+      </div>
+
+      {/* NETRA Operational Safety Differentiator Strip */}
+      <div
+        style={{
+          padding: '10px 14px',
+          background: 'linear-gradient(90deg, rgba(37, 99, 235, 0.12) 0%, rgba(13, 148, 136, 0.10) 100%)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: 'var(--radius-xs)',
+          marginBottom: 16,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 10,
+        }}
+      >
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-blue)', letterSpacing: '0.05em' }}>
+              NETRA CONTINUOUS TRUST SURVEILLANCE
+            </span>
+            <span className="status-pill active" style={{ fontSize: 8 }}>CONTINUOUS vs STATIC</span>
+          </div>
+          <p style={{ margin: '4px 0 0 0', fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            Traditional exchanges evaluate trader legitimacy once during point-in-time KYC or session login. NETRA continuously models dynamic Bayesian trust decay, behavioral entropy, execution velocity, and network topology across all in-flight operational events.
+          </p>
+        </div>
+        <div className="mono" style={{ fontSize: 9.5, color: 'var(--text-dim)', textAlign: 'right' }}>
+          <div>SURVEILLANCE ENGINE: ACTIVE</div>
+          <div style={{ color: 'var(--state-normal)', fontWeight: 600 }}>100% OPERATIONAL FIDELITY</div>
         </div>
       </div>
 
@@ -526,6 +565,73 @@ export function ObservatoryWatchlist({
                       No active protocol triggers. Session conforming to normal baseline.
                     </div>
                   )}
+                </div>
+
+                {/* Target Entity Activity Register & Continuing Operational Stream */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-dim)', fontWeight: 600 }}>
+                      ENTITY ACTIVITY REGISTER // TELEMETRY:
+                    </span>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: 8.5, padding: '1px 6px' }}
+                      onClick={() => onNavigateToView('OVERVIEW', selectedRecord.trader_id)}
+                      title="View complete 7-stage causal reasoning chain for this trader"
+                    >
+                      WHY NETRA DECIDED →
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      maxHeight: 160,
+                      overflowY: 'auto',
+                      background: 'var(--bg-surface-0)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-xs)',
+                      padding: '4px 6px',
+                    }}
+                  >
+                    {targetEvents.length === 0 ? (
+                      <div style={{ padding: '10px 8px', fontSize: 9.5, color: 'var(--text-dim)', textAlign: 'center' }}>
+                        No anomalous events recorded. Account telemetry conforming to habitual baseline.
+                      </div>
+                    ) : (
+                      targetEvents.slice(0, 5).map(evt => (
+                        <div
+                          key={evt.event_id}
+                          style={{
+                            padding: '5px 6px',
+                            borderBottom: '1px solid var(--border-subtle)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: 9.5,
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <strong className="mono" style={{ color: evt.event_type.includes('WITHDRAWAL') || evt.event_type.includes('FAIL') || evt.event_type.includes('BURST') || evt.event_type.includes('LEVERAGE') ? 'var(--state-critical)' : '#fff' }}>
+                                {evt.event_type}
+                              </strong>
+                              {evt.amount && (
+                                <span className="mono" style={{ color: 'var(--state-normal)', fontSize: 8.5 }}>
+                                  ${evt.amount.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                            <span style={{ color: 'var(--text-dim)', fontSize: 8.5, display: 'block', marginTop: 1 }}>
+                              {evt.device_id || evt.ip_address || 'Conforming session footprint'}
+                            </span>
+                          </div>
+                          <span className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)' }}>
+                            {formatTime(evt.timestamp)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
 
                 {/* Dispatch Protocol Toolbar */}

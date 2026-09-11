@@ -394,6 +394,9 @@ export type ActionEvaluationResult = {
   reason: string
   policy_version: string
   evidence: any[]
+  status?: string
+  requires_step_up?: boolean
+  session_risk_state?: string
   restriction_status?: string
   active_protocols?: string[]
 }
