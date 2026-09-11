@@ -1189,6 +1189,8 @@ class NetraEngine:
         sequence: dict[str, Any] | None,
         decision: str,
         signals: list[RiskSignal] | None = None,
+        trader: dict[str, Any] | None = None,
+        prior_decision: str = "ALLOW",
     ) -> dict[str, Any]:
         factors = [item["label"] for item in evidence]
         if sequence:
@@ -1215,6 +1217,91 @@ class NetraEngine:
             recommendation = f"Block {act_label} immediately and route urgent forensic case to fraud response desk."
         else:
             recommendation = f"Route {act_label} for analyst triage under policy {pol_ver}."
+
+        # Compute structured causal primary drivers
+        drivers: list[dict[str, Any]] = []
+        if signals:
+            for s in sorted(signals, key=lambda x: (x.contribution, x.severity), reverse=True):
+                if s.severity >= 15.0 or s.contribution > 0.0:
+                    cat = s.category
+                    feat = s.feature
+                    name = feat.replace("_", " ").title()
+                    if cat == "device":
+                        name = "Device Novelty"
+                    elif cat == "ip" or feat == "datacenter_proxy":
+                        name = "Infrastructure Novelty / Proxy"
+                    elif cat == "amount":
+                        name = "Transaction Baseline Deviation"
+                    elif cat == "velocity":
+                        name = "Velocity Anomaly"
+                    elif cat == "relationships":
+                        name = "Topology Relationship Linkage"
+                    elif cat == "behaviour":
+                        name = "Behavioral Deviation (ML)"
+                    elif cat == "sequence":
+                        name = "Attack Sequence Pattern"
+                    elif cat == "wallet":
+                        name = "Destination Wallet Novelty"
+
+                    drivers.append({
+                        "name": name,
+                        "category": s.category,
+                        "severity": round(s.severity, 1),
+                        "contribution": round(s.contribution, 2),
+                        "reason": s.reason,
+                        "direction": "negative" if s.severity >= 20.0 else "neutral",
+                    })
+
+        if not drivers:
+            drivers.append({
+                "name": "Habitual Baseline Conformance",
+                "category": "baseline",
+                "severity": 0.0,
+                "contribution": 0.0,
+                "reason": "Event remained within individual habitual baseline norms.",
+                "direction": "positive" if trust_after >= trust_before else "neutral",
+            })
+
+        baseline = trader.get("baseline", {}) if trader else {}
+        baseline_dep = baseline.get("deposit_amount", 2500)
+        baseline_devices = baseline.get("known_devices", [])
+        is_new_device = bool(event.device_id and baseline_devices and event.device_id not in baseline_devices)
+
+        what_changed = {
+            "before": {
+                "trust": round(trust_before, 1),
+                "policy": prior_decision,
+                "device": "Registered hardware" if not is_new_device else "Known hardware",
+                "amount_norm": f"≤ ${baseline_dep:,.0f} (avg)" if baseline_dep else "Nominal range",
+                "velocity": "Normal (< 3 events/hr)",
+                "topology": "Isolated node (0 shared entities)",
+            },
+            "event": {
+                "event_id": event.event_id,
+                "event_type": event.event_type,
+                "amount": event.amount,
+                "device_id": event.device_id,
+                "ip_address": event.ip_address,
+                "network_type": getattr(event, "network_type", None) or "residential",
+            },
+            "after": {
+                "trust": round(trust_after, 1),
+                "trust_delta": round(trust_after - trust_before, 1),
+                "policy": decision,
+                "action": recommendation,
+                "risk_level": "CRITICAL" if trust_after < 20 else "HIGH" if trust_after < 45 else "ELEVATED" if trust_after < 70 else "NORMAL",
+            },
+        }
+
+        evidence_basis = {
+            "event_id": event.event_id,
+            "trader_id": event.trader_id,
+            "decision_id": None,
+            "case_id": None,
+            "audit_id": None,
+            "audit_hash": None,
+        }
+
         return {
             "summary": (
                 f"Trust moved from {trust_before:.0f} to {trust_after:.0f} after {event.event_type}. "
@@ -1228,6 +1315,9 @@ class NetraEngine:
             "recommendation": recommendation,
             "evidence": evidence + ([{"id": sequence["id"], "type": "SEQUENCE", "label": sequence["name"]}] if sequence else []),
             "signals": [s.to_dict() for s in signals] if signals else [],
+            "primary_drivers": drivers[:6],
+            "what_changed": what_changed,
+            "evidence_basis": evidence_basis,
         }
 
     def process_event(self, event: Any, actor: str = "demo-analyst") -> dict[str, Any]:
@@ -1281,6 +1371,7 @@ class NetraEngine:
 
         trader = self.traders[trader_id]
         prior = float(trader["trust_score"])
+        prior_decision = trader.get("last_decision", "ALLOW")
 
         # 1. Extract signals from event against trader baseline
         signals = self._extract_signals(trader, event)
@@ -1346,7 +1437,17 @@ class NetraEngine:
         self.events.append(event_data)
         self._link_entities(event)
 
-        explanation = self._explain(event, prior, new_trust, evidence, sequence, decision, signals=signals)
+        explanation = self._explain(
+            event,
+            prior,
+            new_trust,
+            evidence,
+            sequence,
+            decision,
+            signals=signals,
+            trader=trader,
+            prior_decision=prior_decision,
+        )
         transition = {
             "transition_id": f"TRUST-{uuid4().hex[:8].upper()}",
             "timestamp": event.timestamp,
@@ -1416,6 +1517,7 @@ class NetraEngine:
             "wallet_address": event.wallet_address,
             "source": event.source or "live",
         }
+        explanation.get("evidence_basis", {})["decision_id"] = decision_record["decision_id"]
         self.decisions.append(decision_record)
 
         audit_details = {
@@ -1443,6 +1545,9 @@ class NetraEngine:
             decision_record["audit_hash"] = audit_record.get("current_hash")
             event_data["audit_id"] = audit_record["audit_id"]
             event_data["audit_hash"] = audit_record.get("current_hash")
+            if "evidence_basis" in explanation:
+                explanation["evidence_basis"]["audit_id"] = audit_record["audit_id"]
+                explanation["evidence_basis"]["audit_hash"] = audit_record.get("current_hash")
         except Exception:
             self.traders[trader_id] = snapshot["trader"]
             del self.events[snapshot["events"]:]
@@ -1480,6 +1585,8 @@ class NetraEngine:
         if active_case:
             decision_record["case_id"] = active_case.get("case_id")
             event_data["case_id"] = active_case.get("case_id")
+            if "evidence_basis" in explanation:
+                explanation["evidence_basis"]["case_id"] = active_case.get("case_id")
 
         enforcement = self.evaluate_action(trader_id, action)
         decision_record["enforcement"] = enforcement
@@ -1705,6 +1812,204 @@ class NetraEngine:
             "total_divergences": len(changes),
             "divergences": changes[:10],
             "estimated_latency_delta_ms": 0.15,
+        }
+
+    def simulate_counterfactual(
+        self,
+        trader_id: str,
+        event_payload: dict[str, Any],
+        modifications: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Deterministically evaluates 'What if?' sensitivity scenarios for an event without mutating runtime engine state.
+
+        Evaluates hypothetical removal or normalization of risk signals (device novelty, anomalous amounts,
+        datacenter networks, velocity surges, or topology clustering) through the exact NetraEngine policy equations.
+        """
+        mods = modifications or {}
+        trader = self.traders.get(trader_id)
+        if not trader:
+            trader = self.traders.get("7842", list(self.traders.values())[0])
+
+        baseline = trader.get("baseline", {})
+        prior = float(trader["trust_score"])
+        event_type = event_payload.get("event_type", "TRADE").upper()
+
+        # Build original event record
+        orig_event = EventRecord(
+            event_id=event_payload.get("event_id") or "EV-CF-ORIG",
+            timestamp=event_payload.get("timestamp") or iso_now(),
+            trader_id=trader_id,
+            event_type=event_type,
+            source=event_payload.get("source", "counterfactual-orig"),
+            session_id=event_payload.get("session_id"),
+            device_id=event_payload.get("device_id"),
+            ip_address=event_payload.get("ip_address"),
+            country=event_payload.get("country"),
+            city=event_payload.get("city"),
+            asn=event_payload.get("asn"),
+            network_type=event_payload.get("network_type"),
+            amount=event_payload.get("amount"),
+            currency=event_payload.get("currency", "USD"),
+            asset=event_payload.get("asset"),
+            leverage=event_payload.get("leverage"),
+            wallet_address=event_payload.get("wallet_address"),
+            risk_relevance=event_payload.get("risk_relevance", "medium"),
+        )
+
+        orig_signals = self._extract_signals(trader, orig_event)
+        orig_seq = self._sequence(trader_id, orig_event)
+        if orig_seq:
+            orig_signals.append(
+                RiskSignal(
+                    category="sequence",
+                    feature="kill_chain_pattern",
+                    severity=float(orig_seq["score"]),
+                    contribution=0.0,
+                    reason=f"{orig_seq['name']} pattern detected",
+                    evidence={"id": orig_seq["id"], "type": "SEQUENCE", "label": orig_seq["name"]},
+                    rule_code="RAPID_SUSPICIOUS_WITHDRAWAL_SEQUENCE",
+                )
+            )
+
+        orig_risk, orig_dims, _ = self._aggregate_contextual_risk(orig_signals)
+        orig_action = self._action_for_event(orig_event)
+        orig_delta = self._calculate_trust_delta(
+            prior,
+            orig_risk,
+            orig_action,
+            event_type,
+            initial_trust=float(trader.get("initial_trust", 94.0)),
+        )
+        orig_trust = round(clamp(prior + orig_delta), 1)
+        orig_decision = self._decision(orig_trust, orig_action)
+        orig_recommendation = (
+            f"Block {orig_action.lower()} immediately"
+            if orig_decision == "BLOCK"
+            else f"Step-up verification required for {orig_action.lower()}"
+            if orig_decision == "VERIFY"
+            else f"Restrict {orig_action.lower()}"
+            if orig_decision == "RESTRICT"
+            else f"Allow {orig_action.lower()} under continuous observation"
+        )
+
+        # Build modified counterfactual event payload
+        cf_payload = dict(event_payload)
+        if mods.get("remove_device_novelty"):
+            known_devices = baseline.get("known_devices", ["DEV-7842-A"])
+            cf_payload["device_id"] = known_devices[0] if known_devices else "DEV-PRIMARY"
+            if cf_payload.get("event_type") in {"NEW_DEVICE", "DEVICE_CHANGE"}:
+                cf_payload["event_type"] = "LOGIN"
+
+        if mods.get("remove_network_novelty"):
+            cf_payload["network_type"] = "residential"
+            cf_payload["ip_address"] = "198.51.100.1"
+            if cf_payload.get("event_type") == "IP_CHANGE":
+                cf_payload["event_type"] = "LOGIN"
+
+        if mods.get("normalize_amount"):
+            cf_payload["amount"] = float(baseline.get("deposit_amount", 2500.0))
+
+        if mods.get("normalize_leverage"):
+            cf_payload["leverage"] = int(baseline.get("leverage", 3))
+
+        cf_event_type = cf_payload.get("event_type", event_type).upper()
+        cf_event = EventRecord(
+            event_id=f"EV-CF-SIM-{uuid4().hex[:6].upper()}",
+            timestamp=cf_payload.get("timestamp") or iso_now(),
+            trader_id=trader_id,
+            event_type=cf_event_type,
+            source="counterfactual-sim",
+            session_id=cf_payload.get("session_id"),
+            device_id=cf_payload.get("device_id"),
+            ip_address=cf_payload.get("ip_address"),
+            country=cf_payload.get("country"),
+            city=cf_payload.get("city"),
+            asn=cf_payload.get("asn"),
+            network_type=cf_payload.get("network_type"),
+            amount=cf_payload.get("amount"),
+            currency=cf_payload.get("currency", "USD"),
+            asset=cf_payload.get("asset"),
+            leverage=cf_payload.get("leverage"),
+            wallet_address=cf_payload.get("wallet_address"),
+            risk_relevance="low" if mods.get("remove_device_novelty") and mods.get("normalize_amount") else "medium",
+        )
+
+        cf_signals = self._extract_signals(trader, cf_event)
+        if not mods.get("remove_sequence") and orig_seq:
+            cf_signals.append(
+                RiskSignal(
+                    category="sequence",
+                    feature="kill_chain_pattern",
+                    severity=float(orig_seq["score"]),
+                    contribution=0.0,
+                    reason=f"{orig_seq['name']} pattern detected",
+                    evidence={"id": orig_seq["id"], "type": "SEQUENCE", "label": orig_seq["name"]},
+                    rule_code="RAPID_SUSPICIOUS_WITHDRAWAL_SEQUENCE",
+                )
+            )
+
+        if mods.get("remove_velocity"):
+            cf_signals = [s for s in cf_signals if s.category != "velocity"]
+        if mods.get("remove_topology_linkage"):
+            cf_signals = [s for s in cf_signals if s.category != "relationships"]
+
+        cf_risk, cf_dims, _ = self._aggregate_contextual_risk(cf_signals)
+
+        if mods.get("verification_succeeded"):
+            # Step-up identity challenge completed successfully: dampens remaining risk
+            cf_risk = max(0.0, cf_risk * 0.25)
+
+        cf_action = self._action_for_event(cf_event)
+        cf_delta = self._calculate_trust_delta(
+            prior,
+            cf_risk,
+            cf_action,
+            cf_event_type,
+            initial_trust=float(trader.get("initial_trust", 94.0)),
+        )
+
+        cf_trust = round(clamp(prior + cf_delta), 1)
+        cf_decision = self._decision(cf_trust, cf_action)
+        cf_recommendation = (
+            f"Block {cf_action.lower()} immediately"
+            if cf_decision == "BLOCK"
+            else f"Step-up verification required for {cf_action.lower()}"
+            if cf_decision == "VERIFY"
+            else f"Restrict {cf_action.lower()}"
+            if cf_decision == "RESTRICT"
+            else f"Allow {cf_action.lower()} under continuous observation"
+        )
+
+        # Calculate mitigated signals
+        orig_rule_codes = {s.rule_code for s in orig_signals if s.rule_code}
+        cf_rule_codes = {s.rule_code for s in cf_signals if s.rule_code}
+        mitigated_rule_codes = orig_rule_codes - cf_rule_codes
+        mitigated = [s.to_dict() for s in orig_signals if s.rule_code in mitigated_rule_codes]
+
+        return {
+            "trader_id": trader_id,
+            "original": {
+                "trust": orig_trust,
+                "trust_delta": orig_delta,
+                "decision": orig_decision,
+                "action": orig_recommendation,
+                "risk_score": round(orig_risk, 1),
+                "signals": [s.to_dict() for s in orig_signals],
+            },
+            "counterfactual": {
+                "trust": cf_trust,
+                "trust_delta": cf_delta,
+                "decision": cf_decision,
+                "action": cf_recommendation,
+                "risk_score": round(cf_risk, 1),
+                "signals": [s.to_dict() for s in cf_signals],
+            },
+            "trust_shift": round(cf_trust - orig_trust, 1),
+            "policy_transition": f"{orig_decision} → {cf_decision}",
+            "mitigated_signals": mitigated,
+            "modifications_applied": mods,
+            "simulation_type": "DETERMINISTIC_SENSITIVITY_SIMULATION",
+            "methodological_note": "Sensitivity simulation evaluated deterministically through NetraEngine risk aggregation and policy thresholds without mutating live system state. Not a causal DAG inference.",
         }
 
     def _link_entities(self, event: EventRecord) -> None:

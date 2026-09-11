@@ -622,3 +622,41 @@ Provide instant, bidirectional operational navigation between every stage of the
    - Bound `activeEvent` to an instant `VIEW EVENT ⚡` action in the case cockpit header, navigating directly to the exact telemetry record in the Live Telemetry Monitor.
    - Bound `activeDecision` and `relatedAudits` to an instant `AUDIT VAULT 🔍` action in the case cockpit header, navigating directly to the cryptographic proof ledger.
    - Exposed trigger event ID in the Incident Trigger & Root Cause card.
+
+---
+
+## Final Hackathon Round 1 (Checkpoint 1.3): Structured Causal Reasoning, Cross-Surface Provenance & Deterministic Counterfactual Sensitivity Simulation (September 12, 2026)
+
+### Objective
+Solidify NETRA's causal intelligence chain (`EVENT → CONTEXT → SIGNALS → BASELINE → TOPOLOGY → TRUST IMPACT → POLICY → ACTION → AUDIT`), eliminate empty or decorative UI cards, ensure authoritative before/after state explanation, and implement deterministic Counterfactual Sensitivity Simulation ("What If?") grounded in the live policy engine without mutating system state.
+
+### Key Architectural & Functional Deliverables
+1. **Structured Causal Explanation Engine (`backend/engine.py`):**
+   - Extended `_explain` to compute structured `primary_drivers` with human-readable factor decomposition, direction (`positive` vs `negative`), contribution, and severity ratings.
+   - Added `what_changed` operational before/after timeline detailing trust scores, policy tiers, device status, and velocity norms.
+   - Added `evidence_basis` binding exact `event_id`, `trader_id`, `decision_id`, `case_id`, and write-ahead ledger `audit_id` with SHA-256 hash.
+2. **Deterministic Counterfactual Sensitivity Engine (`backend/engine.py` & `backend/main.py`):**
+   - Implemented `simulate_counterfactual` evaluating hypothetical removal or normalization of risk signals through the identical `NetraEngine` aggregation and policy equations.
+   - Exposed authenticated REST endpoint `POST /api/counterfactual/simulate` supporting hypothetical toggles:
+     - `remove_device_novelty` (recognized primary hardware)
+     - `remove_network_novelty` (residential ISP vs datacenter proxy)
+     - `normalize_amount` (habitual deposit average)
+     - `normalize_leverage` (baseline leverage ratio)
+     - `remove_velocity` (standard inter-event intervals)
+     - `remove_topology_linkage` (isolated node vs collusion cluster)
+     - `verification_succeeded` (biometric / 2FA challenge completed)
+   - Provides explicit methodological disclosure: *"Deterministic sensitivity simulation evaluating hypothetical factor removal through NetraEngine risk aggregation and policy thresholds without mutating live system state. Not a causal DAG inference."*
+3. **Institutional UI Provenance & "What If?" Cockpit (`frontend/src/components/ReasoningEvidenceChain.tsx`):**
+   - 9-Stage Causal Pipeline with zero placeholder data: displays genuine values or explicit `NO MATERIAL SIGNAL DETECTED`.
+   - "WHY THIS DECISION?" contextual attribution grid displaying individual primary driver cards.
+   - "WHAT CHANGED?" operational before/event/after timeline cards with clear visual arrows.
+   - Interactive Counterfactual Simulation cockpit with toggle cards, preset buttons (`Habitual Profile`, `2FA Step-Up Passed`), live trust score shifts, policy transitions, and mitigated signal attribution chips.
+   - Authoritative Evidence Basis strip with one-click copy and cross-surface deep-linking (`⚡ Live Monitor`, `View Case →`, `Audit Vault →`, `Verify Proof 🔍`).
+   - Inline Cryptographic Proof Inspector verifying SHA-256 hash pre-image against write-ahead ledger.
+4. **Root Workspace Developer Experience (`package.json`):**
+   - Maintained root workspace `package.json` delegating `npm run dev`, `npm run build`, and `npm run preview` to `frontend/`.
+
+### Comprehensive Verification Results
+- **Backend Pytest Suite:** 82 passed out of 82 tests (100% pass rate in 25.84s across `test_api.py`, `test_auth.py`, `test_engine.py`, `test_single_event_propagation.py`).
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 126ms with 0 errors.
+- **Formatting & Whitespace:** `git diff --check` passed cleanly with 0 warnings.

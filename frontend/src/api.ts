@@ -184,4 +184,8 @@ export const api = {
     }
     return res.json() as Promise<T>
   },
+
+  post: async <T>(path: string, data?: unknown): Promise<T> => {
+    return api.send<T>('POST', path, data)
+  },
 }

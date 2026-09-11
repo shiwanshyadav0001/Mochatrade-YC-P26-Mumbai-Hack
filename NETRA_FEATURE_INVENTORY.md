@@ -19,6 +19,8 @@
 - [✓] Temporal Sequence Anomaly Engine (Timestamp-aware sequence kill chains in `SequenceEngine` with subsecond ordering)
 - [✓] Entity Relationship Linkage (Multi-hop set expansion & normalized target entities)
 - [✓] Explainability Dossier Generator (Contextual action-, policy-, and amount-aware SOP recommendations)
+- [✓] Structured Causal Explanation Engine (`primary_drivers` decomposition, `what_changed` timeline, and authoritative `evidence_basis` cross-surface linkage)
+- [✓] Deterministic Counterfactual Sensitivity Simulation (`POST /api/counterfactual/simulate` evaluating hypothetical factor removal on trust and policy without mutating state)
 - [✓] Organic Continuous Trust Degradation (Organic evidence-based scoring; hardcoded bypass removed)
 - [✓] Adaptive Rolling Baselines (`BaselineEngine`: mean, stdev, sample count, z-scores, circadian norms)
 - [✓] Baseline Poisoning Protection (`is_trusted_for_learning` guards preventing unverified attacks from learning)

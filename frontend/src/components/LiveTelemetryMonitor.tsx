@@ -1750,6 +1750,8 @@ export function LiveTelemetryMonitor({
             onInspectEvidence={() => (focusedDecision || latestDecision) && onInspectDecision(focusedDecision || latestDecision!)}
             onOpenTopology={() => onNavigateView('RELATIONSHIP GRAPH')}
             onNavigateToAudit={onNavigateToAudit}
+            onNavigateToCase={() => onNavigateView('CASES')}
+            onNavigateToEvent={(evId, tid) => { if (onSelectTrader) onSelectTrader(tid); }}
           />
         </div>
 
