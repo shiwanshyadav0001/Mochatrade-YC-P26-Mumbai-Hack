@@ -176,6 +176,12 @@ export default function App() {
   const [auditFilterSubject, setAuditFilterSubject] = useState<string>('')
   const [auditFocusId, setAuditFocusId] = useState<string>('')
   const [targetEventId, setTargetEventId] = useState<string | null>(null)
+  const [focusedCaseId, setFocusedCaseId] = useState<string>('')
+
+  const handleNavigateToCase = useCallback((caseId?: string) => {
+    if (caseId) setFocusedCaseId(caseId)
+    setView('CASES')
+  }, [])
 
   const handleNavigateToAudit = useCallback((auditId?: string, subject?: string) => {
     if (auditId) setAuditFocusId(auditId)
@@ -1396,9 +1402,7 @@ export default function App() {
                 onInspectEvidence={() => (targetDecision || latestDecision) && inspectDecision(targetDecision || latestDecision!)}
                 onOpenTopology={() => setView('RELATIONSHIP GRAPH')}
                 onNavigateToAudit={handleNavigateToAudit}
-                onNavigateToCase={(caseId) => {
-                  setView('CASES')
-                }}
+                onNavigateToCase={handleNavigateToCase}
                 onNavigateToEvent={handleNavigateToEvent}
               />
 
@@ -2548,6 +2552,7 @@ export default function App() {
               events={events}
               auditRecords={audit}
               userRole={userRole}
+              initialCaseId={focusedCaseId}
               onUpdateCase={updateCase}
               onCreateCase={createCase}
               onAddCaseNote={addCaseNote}
@@ -2638,6 +2643,7 @@ export default function App() {
                     refreshSelected(id)
                   }}
                   onNavigate={setView}
+                  onNavigateToCase={handleNavigateToCase}
                   onNavigateToAudit={handleNavigateToAudit}
                   onNavigateToEvent={handleNavigateToEvent}
                   onRefreshAll={refreshAll}
@@ -3030,6 +3036,10 @@ export default function App() {
               onNavigate={viewName => {
                 setDemoModalOpen(false)
                 setView(viewName)
+              }}
+              onNavigateToCase={caseId => {
+                setDemoModalOpen(false)
+                handleNavigateToCase(caseId)
               }}
               onNavigateToAudit={(auditId, subject) => {
                 setDemoModalOpen(false)

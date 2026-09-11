@@ -109,7 +109,7 @@ export function AccountRecoveryModal({
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 6, marginBottom: 14 }}>
               {[
-                { id: 'EMAIL_OTP', label: 'Registered Email Address (t***@mochatrade.io)', sub: '6-digit cryptographic OTP token' },
+                { id: 'EMAIL_OTP', label: 'Registered Email Address (t***@netra-trust.io)', sub: '6-digit cryptographic OTP token' },
                 { id: 'SMS_OTP', label: 'Registered Phone SMS (+91 ***-***-7842)', sub: 'Out-of-band cellular challenge' },
                 { id: 'SECONDARY_KYC', label: 'Secondary KYC Document & Video Verification', sub: 'Manual identity compliance bypass' },
               ].map(c => (

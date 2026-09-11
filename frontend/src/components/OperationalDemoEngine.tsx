@@ -336,6 +336,7 @@ interface OperationalDemoEngineProps {
   onInspectTrader?: (trader: Trader) => void
   onSelectTrader?: (traderId: string) => void
   onNavigate?: (view: any) => void
+  onNavigateToCase?: (caseId?: string) => void
   onNavigateToAudit?: (auditId?: string, subject?: string) => void
   onNavigateToEvent?: (eventId: string, traderId: string) => void
   onRefreshAll: () => Promise<void>
@@ -364,6 +365,7 @@ export function OperationalDemoEngine({
   onInspectTrader,
   onSelectTrader,
   onNavigate,
+  onNavigateToCase,
   onNavigateToAudit,
   onNavigateToEvent,
   onRefreshAll,
@@ -1294,11 +1296,16 @@ export function OperationalDemoEngine({
                     </div>
                     <div>
                       <span className="data-label">ACTION:</span>
-                      {onNavigate && (
-                        <button className="btn btn-secondary" style={{ fontSize: 9, padding: '2px 8px' }} onClick={() => onNavigate('CASES')}>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 9, padding: '2px 8px' }}
+                          onClick={() => {
+                            if (onNavigateToCase) onNavigateToCase(activeCase.case_id)
+                            else onNavigate?.('CASES')
+                          }}
+                        >
                           OPEN DOSSIER IN WORKBENCH →
                         </button>
-                      )}
                     </div>
                   </div>
                 ) : (

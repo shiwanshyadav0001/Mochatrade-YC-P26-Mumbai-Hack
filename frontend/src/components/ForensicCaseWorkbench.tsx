@@ -9,6 +9,7 @@ interface ForensicCaseWorkbenchProps {
   events: Event[]
   auditRecords: AuditRecord[]
   userRole: UserRole
+  initialCaseId?: string
   onUpdateCase: (caseId: string, status: string, note?: string) => Promise<void>
   onCreateCase: () => Promise<void>
   onAddCaseNote: (caseId: string, note: string) => Promise<void>
@@ -29,6 +30,7 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
   events,
   auditRecords,
   userRole,
+  initialCaseId,
   onUpdateCase,
   onCreateCase,
   onAddCaseNote,
@@ -41,8 +43,15 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
   onNavigateToEvent,
 }) => {
   const [selectedCaseId, setSelectedCaseId] = useState<string>(() => {
+    if (initialCaseId && cases.some(c => c.case_id === initialCaseId)) return initialCaseId
     return cases.length > 0 ? cases[0].case_id : ''
   })
+
+  React.useEffect(() => {
+    if (initialCaseId && cases.some(c => c.case_id === initialCaseId)) {
+      setSelectedCaseId(initialCaseId)
+    }
+  }, [initialCaseId, cases])
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const [severityFilter, setSeverityFilter] = useState<string>('ALL')
   const [searchQuery, setSearchQuery] = useState<string>('')

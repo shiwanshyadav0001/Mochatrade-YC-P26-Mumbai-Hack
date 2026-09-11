@@ -12,8 +12,6 @@ export function ClientActivityPresentation({
   selectedTrader,
   onInjectSyntheticEvent,
 }: ClientActivityPresentationProps) {
-  const [videoSrc, setVideoSrc] = useState<string>('')
-  const [videoError, setVideoError] = useState(false)
   const [simulatingAppAction, setSimulatingAppAction] = useState(false)
 
   const handleSimulate = (type: string, amount?: number) => {
@@ -24,83 +22,141 @@ export function ClientActivityPresentation({
     }
   }
 
+  const traderId = selectedTrader?.trader_id || '7842'
+  const traderName = selectedTrader?.name || 'Maya Chen'
+  const trustScore = selectedTrader?.trust_score ?? 94
+  const sessionRisk = selectedTrader?.session_risk_state || 'SESSION_NORMAL'
+  const status = selectedTrader?.status || 'NORMAL'
+  const baselineDeposit = selectedTrader?.baseline?.deposit_amount ?? 3000
+  const baselineLeverage = selectedTrader?.baseline?.leverage ?? 5
+
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
       <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h3>Client Trading Application Activity</h3>
-          <span className="panel-meta">EXTERNAL TRADING & AUTHENTICATION ACTIVITY PROTECTED BY NETRA</span>
+          <h3>NETRA Demonstration Market Operations Gateway</h3>
+          <span className="panel-meta">SIMULATED VENUE ORDER FLOW & TELEMETRY INGESTION PIPELINE</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span className="status-dot active" />
           <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-secondary)' }}>
-            INGESTION GATEWAY CONNECTED
+            INGESTION GATEWAY: ACTIVE
           </span>
         </div>
       </div>
 
       <div style={{ padding: '14px 16px' }}>
         <div className="grid-12" style={{ gap: 12 }}>
-          {/* Left 7 Cols: Video / Interactive Telemetry Display Area */}
+          {/* Left 7 Cols: Demonstration Market Feed / Venue Operations Simulation */}
           <div className="col-7">
             <div
               style={{
                 position: 'relative',
                 width: '100%',
-                height: 220,
+                minHeight: 220,
                 background: 'linear-gradient(135deg, #090d16 0%, #0d1527 100%)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-xs)',
-                overflow: 'hidden',
+                padding: '12px 14px',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
+                justifyContent: 'space-between',
               }}
             >
-              {videoSrc && !videoError ? (
-                <video
-                  src={videoSrc}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  onError={() => setVideoError(true)}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : (
-                <div style={{ textAlign: 'center', padding: '16px 20px', maxWidth: 440 }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 8px', borderRadius: 4, background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.25)', marginBottom: 8 }}>
+              <div>
+                {/* Header Strip */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <span className="status-dot active" style={{ width: 6, height: 6 }} />
-                    <span className="mono" style={{ fontSize: 9.5, color: 'var(--accent-blue)', fontWeight: 600 }}>
-                      EXTERNAL CLIENT PLATFORM SURVEILLANCE
+                    <span className="mono" style={{ fontSize: 9.5, color: 'var(--accent-blue)', fontWeight: 700 }}>
+                      DEMONSTRATION MARKET FEED // VENUE SIMULATION
                     </span>
                   </div>
+                  <span className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)' }}>
+                    PERP FUTURES CLOB
+                  </span>
+                </div>
 
-                  <h4 style={{ margin: '4px 0 6px', fontSize: 13.5, color: '#fff', fontWeight: 600 }}>
-                    Mochatrade Institutional Exchange Gateway
-                  </h4>
+                {/* Simulated Ticker Strip */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: 6,
+                    marginBottom: 12,
+                  }}
+                >
+                  {[
+                    { symbol: 'AAPL-PERP', price: '$232.40', chg: '+1.2%', up: true },
+                    { symbol: 'NVDA-PERP', price: '$119.85', chg: '-0.4%', up: false },
+                    { symbol: 'TSLA-PERP', price: '$218.10', chg: '+2.8%', up: true },
+                    { symbol: 'BTC-PERP', price: '$64,250', chg: '+0.8%', up: true },
+                  ].map(ticker => (
+                    <div
+                      key={ticker.symbol}
+                      style={{
+                        padding: '4px 6px',
+                        background: 'var(--bg-surface-0)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 3,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)' }}>{ticker.symbol}</div>
+                      <div className="mono" style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>{ticker.price}</div>
+                      <div className="mono" style={{ fontSize: 8, color: ticker.up ? 'var(--state-normal)' : 'var(--state-critical)' }}>
+                        {ticker.chg}
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
-                  <p style={{ margin: 0, fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                    Visual representation of trader authentication & order flow. External transactions feed directly into NETRA Continuous Trust Intelligence.
-                  </p>
+                {/* Active Client Context */}
+                <div
+                  style={{
+                    padding: '8px 10px',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 4,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>
+                      #{traderId} — {traderName}
+                    </div>
+                    <div className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)', marginTop: 2 }}>
+                      HABITUAL BASELINE: ${baselineDeposit.toLocaleString()} / {baselineLeverage}x
+                    </div>
+                  </div>
 
-                  <div className="mono" style={{ marginTop: 12, display: 'flex', justifyContent: 'center', gap: 8, fontSize: 9 }}>
-                    <span style={{ padding: '2px 6px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 3 }}>
-                      ACTIVE CLIENT: #{selectedTrader?.trader_id || '7842'}
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span className="mono" style={{ fontSize: 9, padding: '2px 6px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 3, color: trustScore >= 70 ? 'var(--state-normal)' : trustScore >= 45 ? 'var(--state-elevated)' : 'var(--state-critical)', fontWeight: 700 }}>
+                      TRUST: {trustScore}/100
                     </span>
-                    <span style={{ padding: '2px 6px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 3 }}>
-                      SESSION: {selectedTrader?.session_risk_state || 'SESSION_NORMAL'}
+                    <span className="mono" style={{ fontSize: 9, padding: '2px 6px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 3, color: 'var(--text-secondary)' }}>
+                      {sessionRisk}
                     </span>
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* Bottom Honesty Explainer */}
+              <div style={{ marginTop: 10, borderTop: '1px solid var(--border-subtle)', paddingTop: 6 }}>
+                <p className="mono" style={{ margin: 0, fontSize: 8.5, color: 'var(--text-dim)', lineHeight: 1.3 }}>
+                  • DEMONSTRATION VENUE STREAM: Ingested order actions immediately feed NETRA's continuous Bayesian trust decay, behavioral anomaly models, and policy enforcement gateway.
+                </p>
+              </div>
             </div>
           </div>
 
           {/* Right 5 Cols: Real-time Ingestion Stream from Protected App */}
           <div className="col-5">
-            <div style={{ height: 220, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ minHeight: 220, display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-dim)', fontWeight: 600 }}>
                   REAL-TIME CLIENT EVENT PIPELINE:
@@ -110,7 +166,7 @@ export function ClientActivityPresentation({
                 </span>
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)', padding: '6px 8px' }}>
+              <div style={{ flex: 1, overflowY: 'auto', maxHeight: 155, background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)', padding: '6px 8px' }}>
                 {latestEvents.slice(0, 5).map(evt => (
                   <div
                     key={evt.event_id}
@@ -139,30 +195,42 @@ export function ClientActivityPresentation({
               </div>
 
               {/* Action Simulation Quick Bar */}
-              <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+              <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
                 <button
                   className="btn btn-secondary"
-                  style={{ fontSize: 8.5, padding: '3px' }}
+                  style={{ fontSize: 8.5, padding: '4px 2px' }}
                   onClick={() => handleSimulate('TRADE', 2500)}
                   disabled={simulatingAppAction}
+                  title="Inject habitual conforming order ($2,500)"
                 >
-                  NORMAL TRADE
+                  HABITUAL
                 </button>
                 <button
                   className="btn btn-secondary"
-                  style={{ fontSize: 8.5, padding: '3px' }}
+                  style={{ fontSize: 8.5, padding: '4px 2px' }}
                   onClick={() => handleSimulate('LEVERAGE_CHANGE', 50)}
                   disabled={simulatingAppAction}
+                  title="Inject sudden speculative 50x leverage surge"
                 >
-                  50x LEVERAGE
+                  50x LEV
                 </button>
                 <button
                   className="btn btn-secondary"
-                  style={{ fontSize: 8.5, padding: '3px' }}
+                  style={{ fontSize: 8.5, padding: '4px 2px' }}
+                  onClick={() => handleSimulate('IP_CHANGE')}
+                  disabled={simulatingAppAction}
+                  title="Inject unfamiliar datacenter IP address"
+                >
+                  DC IP
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: 8.5, padding: '4px 2px', borderColor: 'var(--state-critical)' }}
                   onClick={() => handleSimulate('WITHDRAWAL', 25000)}
                   disabled={simulatingAppAction}
+                  title="Inject anomalous $25,000 withdrawal request"
                 >
-                  $25K WITHDRAWAL
+                  $25K WD
                 </button>
               </div>
             </div>

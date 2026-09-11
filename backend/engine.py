@@ -3029,7 +3029,7 @@ class NetraEngine:
 
         recovery_id = f"RCV-{uuid4().hex[:8].upper()}"
         recovery_code = "849201"
-        masked_contact = f"t***{trader_id[-2:] if len(trader_id) >= 2 else '01'}@mochatrade.io" if "EMAIL" in channel.upper() else f"+91 ***-***-{trader_id[-4:] if len(trader_id) >= 4 else '7842'}"
+        masked_contact = f"t***{trader_id[-2:] if len(trader_id) >= 2 else '01'}@netra-trust.io" if "EMAIL" in channel.upper() else f"+91 ***-***-{trader_id[-4:] if len(trader_id) >= 4 else '7842'}"
 
         trader["pending_recovery"] = {
             "recovery_id": recovery_id,
