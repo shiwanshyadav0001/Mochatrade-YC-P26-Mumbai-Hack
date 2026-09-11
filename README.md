@@ -59,7 +59,7 @@ Real-time SSE Stream (`/api/stream`) → Institutional React/TypeScript Operatio
 | **Graduated Action Enforcement Gateway** | `[✓]` | Proportional gating (`ALLOW` → `MONITOR` → `VERIFY` → `RESTRICT` → `BLOCK`) |
 | **Tamper-Evident SHA-256 Audit Vault** | `[✓]` | Cryptographic hash chaining with live pre-image verification |
 | **Forensic Case Workbench & Triage** | `[✓]` | Automated case escalation, chronological notes log, dossier exports |
-| **Cross-Screen Deterministic Scenario Lab** | `[✓]` | 8 interactive scenarios (`ATTACK_SURGE`, `FLAGSHIP`, etc.) with fleet auto-focus |
+| **Cross-Screen Deterministic Scenario Lab** | `[✓]` | Flagship attack scenario with canonical `ProcessedTrustDecision` causal loop across all 10 views |
 | **Multi-Role RBAC Authentication** | `[✓]` | JWT HMAC-SHA256 bearer tokens, PBKDF2 hashing, 4-role permission enforcement |
 | **Action Enforcement Webhooks** | `[~]` | Local gateway layer operational; outbound HTTP webhooks integration-ready |
 | **Topology Graph Layout Physics** | `[SIM]` | Polar-trigonometric deterministic layout active; dynamic D3 force simulation planned |

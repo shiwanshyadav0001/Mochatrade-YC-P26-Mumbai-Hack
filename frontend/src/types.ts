@@ -24,6 +24,7 @@ export type Decision = {
   event_id?: string
   audit_id?: string
   audit_hash?: string
+  case_id?: string
   trader_id: string
   action: string
   decision: string

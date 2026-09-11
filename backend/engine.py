@@ -1454,11 +1454,13 @@ class NetraEngine:
 
         self.audit.append(audit_record)
 
+        # Automatic Case Escalation: severe restrictions trigger institutional triage cases
+        created_case = None
         if decision in {"RESTRICT", "BLOCK"} and not any(
             case["trader_id"] == trader_id and case["status"] in {"OPEN", "INVESTIGATING", "ESCALATED"}
             for case in self.cases.values()
         ):
-            self.create_case(
+            created_case = self.create_case(
                 {
                     "trader_id": trader_id,
                     "trigger_event_id": event.event_id,
@@ -1470,8 +1472,22 @@ class NetraEngine:
                 "netra-system",
             )
 
+        # Contextual case linkage: bind active or newly created case ID to decision & event
+        active_case = created_case or next(
+            (c for c in reversed(list(self.cases.values())) if c.get("trader_id") == trader_id),
+            None,
+        )
+        if active_case:
+            decision_record["case_id"] = active_case.get("case_id")
+            event_data["case_id"] = active_case.get("case_id")
+
         enforcement = self.evaluate_action(trader_id, action)
         decision_record["enforcement"] = enforcement
+
+        # Canonical single source of truth: ProcessedTrustDecision
+        matching_risk_events = [r for r in self.risk_events if r.get("event_id") == event.event_id]
+        trader_graph = self.trader_graph(trader_id)
+        updated_trader = self.get_trader(trader_id)
 
         return {
             "event": event_data,
@@ -1484,6 +1500,11 @@ class NetraEngine:
             "triggered_rules": rules,
             "transition": transition,
             "sequence": sequence,
+            "audit_record": audit_record,
+            "case": created_case or active_case,
+            "risk_events": matching_risk_events,
+            "trader": updated_trader,
+            "graph": trader_graph,
         }
 
     def _persist_event_and_decision(
@@ -1923,9 +1944,10 @@ class NetraEngine:
         self.traders[trader_id] = self._new_trader(trader_id, trust, baseline_deposit)
         self.transitions[trader_id] = []
         # Preserve historical baseline seed events, purge previous scenario events
-        self.events = [e for e in self.events if e["trader_id"] != trader_id or e.get("source") == "seed"]
-        self.decisions = [d for d in self.decisions if d["trader_id"] != trader_id]
+        self.events = [e for e in self.events if e["trader_id"] != trader_id or str(e.get("source", "")).startswith("seed")]
+        self.decisions = [d for d in self.decisions if d["trader_id"] != trader_id or str(d.get("source", "")).startswith("seed")]
         self.cases = {cid: c for cid, c in self.cases.items() if c["trader_id"] != trader_id}
+        self.risk_events = [r for r in self.risk_events if r["trader_id"] != trader_id or str(r.get("source", "")).startswith("seed")]
         # Rebuild baseline profile strictly from historical seed events
         self.baseline_profiles[trader_id] = BaselineEngine.build_profile_from_events(
             trader_id, self.trader_events(trader_id), self.traders[trader_id]["baseline"]

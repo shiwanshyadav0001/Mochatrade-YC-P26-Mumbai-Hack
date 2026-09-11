@@ -210,3 +210,57 @@ def test_attack_surge_simulator_step_execution_and_propagation():
     node_ids = {n["id"] for n in graph["nodes"]}
     assert "DEV-SURGE-1" in node_ids
     assert "WALLET-SURGE-DRAIN" in node_ids
+
+
+def test_canonical_processed_trust_decision_and_flagship_scenario():
+    """Verifies that engine.ingest produces the canonical ProcessedTrustDecision single source
+    of truth containing event, decision, audit_record, case, risk_events, trader, and graph,
+    and tests that the Flagship demonstration scenario propagates deterministically end-to-end.
+    """
+    engine = NetraEngine()
+    engine.reset()
+
+    trader_id, events = engine.prepare_scenario("FLAGSHIP")
+    assert trader_id == "7842"
+    assert len(events) == 6
+
+    step_results = []
+    for ev in events:
+        res = engine.ingest(ev, actor="test-analyst")
+        # Invariant 1: Single authoritative ProcessedTrustDecision structure
+        assert "event" in res
+        assert "decision" in res
+        assert "audit_record" in res
+        assert "trader" in res
+        assert "graph" in res
+        assert "risk_events" in res
+        assert res["audit_record"]["audit_id"] == res["decision"]["audit_id"]
+        assert res["trader"]["trader_id"] == trader_id
+        step_results.append(res)
+
+    # Initial login should maintain trusted baseline
+    login_step = step_results[0]
+    assert login_step["decision"]["decision"] == "ALLOW"
+    assert login_step["trust_score"] >= 90.0
+
+    # Final step: Anomalous withdrawal from fresh wallet and datacenter IP
+    withdrawal_step = step_results[5]
+    assert withdrawal_step["event"]["event_type"] == "WITHDRAWAL"
+    assert withdrawal_step["decision"]["decision"] in {"RESTRICT", "BLOCK"}
+    assert withdrawal_step["trust_score"] < 45.0
+    assert withdrawal_step["case"] is not None
+    assert withdrawal_step["case"]["trader_id"] == trader_id
+    assert withdrawal_step["decision"].get("case_id") == withdrawal_step["case"]["case_id"]
+
+    # Invariant 2: Cryptographic audit verification
+    audit_verification = engine.verify_audit_chain()
+    assert audit_verification["valid"] is True
+    assert audit_verification["checked_records"] == len(engine.audit)
+
+    # Invariant 3: Topology graph resolution
+    final_graph = withdrawal_step["graph"]
+    node_ids = {n["id"] for n in final_graph["nodes"]}
+    assert f"TRADER-{trader_id}" in node_ids
+    assert any("DEV-7842-NEW" in nid for nid in node_ids)
+    assert any("198.18.0.14" in nid for nid in node_ids)
+    assert any("WALLET-7842-FRESH" in nid for nid in node_ids)

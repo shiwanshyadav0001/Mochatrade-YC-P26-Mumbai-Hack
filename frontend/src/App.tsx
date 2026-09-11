@@ -224,6 +224,24 @@ export default function App() {
     }
   }, [refreshSelected])
 
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debouncedRefreshAll = useCallback(() => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current)
+    }
+    refreshTimeoutRef.current = setTimeout(() => {
+      refreshAll()
+    }, 450)
+  }, [refreshAll])
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const verifyAuditChain = useCallback(async () => {
     setVerifyingAudit(true)
     try {
@@ -304,7 +322,7 @@ export default function App() {
           soundManager.playEventTick()
           const result = payload.data
           if (result?.event) {
-            setEvents(current => [result.event, ...current].slice(0, 80))
+            setEvents(current => [result.event, ...current.filter(e => e.event_id !== result.event.event_id)].slice(0, 80))
             setLastEventTime(result.event.timestamp || new Date().toISOString())
             if (result.event.event_id) {
               setRecentEventIds(prev => [result.event.event_id, ...prev.slice(0, 8)])
@@ -317,27 +335,65 @@ export default function App() {
             if (result.decision.trust_score < 45) {
               soundManager.playThreatAlert()
             }
-            setDecisions(current => [result.decision, ...current].slice(0, 50))
+            setDecisions(current => [result.decision, ...current.filter(d => d.decision_id !== result.decision.decision_id)].slice(0, 50))
+          }
+          // Synchronously propagate audit record to audit vault
+          if (result?.audit_record) {
+            setAudit(current => [result.audit_record, ...current.filter(a => a.audit_id !== result.audit_record.audit_id)].slice(0, 100))
+          }
+          // Synchronously propagate case to cases & triage
+          if (result?.case) {
+            setCases(current => [result.case, ...current.filter(c => c.case_id !== result.case.case_id)])
+          }
+          // Synchronously propagate contextual risk events
+          if (result?.risk_events && Array.isArray(result.risk_events) && result.risk_events.length > 0) {
+            setRiskEvents(current => [
+              ...result.risk_events,
+              ...current.filter(r => !result.risk_events.some((nr: any) => nr.risk_id === r.risk_id)),
+            ].slice(0, 100))
+          }
+          // Synchronously propagate updated trader to traders list
+          if (result?.trader) {
+            setTraders(current => current.map(t => t.trader_id === result.trader.trader_id ? result.trader : t))
+          }
+          // Synchronously propagate topology graph if related to selected or auto-focused trader
+          const eventTraderId = result?.event?.trader_id
+          if (result?.graph && (eventTraderId === selectedIdRef.current || autoFocusRef.current)) {
+            setGraph(result.graph)
           }
           // Dynamic Auto Focus: automatically surface the active trader receiving telemetry
-          if (autoFocusRef.current && result?.event?.trader_id) {
-            setSelectedId(result.event.trader_id)
-            refreshSelected(result.event.trader_id)
-          } else if (result?.event?.trader_id === selectedIdRef.current) {
-            refreshSelected(selectedIdRef.current)
+          if (autoFocusRef.current && eventTraderId) {
+            setSelectedId(eventTraderId)
+            if (result?.trader) {
+              setSelected(result.trader)
+            } else {
+              refreshSelected(eventTraderId)
+            }
+          } else if (eventTraderId === selectedIdRef.current) {
+            if (result?.trader) {
+              setSelected(result.trader)
+            } else {
+              refreshSelected(selectedIdRef.current)
+            }
           }
-          refreshAll()
+          debouncedRefreshAll()
+        } else if (payload.type === 'GRAPH_UPDATED') {
+          if (payload.data) {
+            setGraph(payload.data)
+          }
+          debouncedRefreshAll()
+        } else if (payload.type === 'CASE_CREATED' || payload.type === 'CASE_UPDATED') {
+          if (payload.data) {
+            setCases(current => [payload.data, ...current.filter(c => c.case_id !== payload.data.case_id)])
+          }
+          debouncedRefreshAll()
         } else if (
-          payload.type === 'CASE_CREATED' ||
-          payload.type === 'CASE_UPDATED' ||
           payload.type === 'TRADER_UPDATED' ||
-          payload.type === 'POLICY_UPDATED' ||
-          payload.type === 'GRAPH_UPDATED'
+          payload.type === 'POLICY_UPDATED'
         ) {
-          refreshAll()
+          debouncedRefreshAll()
           refreshSelected(selectedIdRef.current)
         } else if (payload.type === 'DEMO_RESET') {
-          setEvents([])
           refreshAll()
           soundManager.playSuccess()
         }
@@ -345,7 +401,7 @@ export default function App() {
         console.error('SSE parse error:', err)
       }
     }
-  }, [refreshAll, refreshSelected])
+  }, [refreshAll, refreshSelected, debouncedRefreshAll])
 
   useEffect(() => {
     connectStream()
@@ -420,7 +476,7 @@ export default function App() {
       const response = await api.send<{ trader_id: string }>('POST', '/simulator/run', { scenario, mode })
       const targetTrader = response.trader_id
       setSelectedId(targetTrader)
-      setEvents(current => current.filter(e => e.trader_id !== targetTrader || e.source === 'seed'))
+      setEvents(current => current.filter(e => e.trader_id !== targetTrader || (e.source && e.source.startsWith('seed'))))
       setView('LIVE MONITOR')
       setNotice(`EXECUTING SCENARIO: ${scenario} FOR TRADER #${targetTrader}`)
     } catch (err: any) {
@@ -956,10 +1012,18 @@ export default function App() {
               <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', alignSelf: 'center', marginRight: 4 }}>
                 SCENARIO DISPATCH:
               </span>
-              <button className="btn btn-secondary" onClick={() => runScenario('FLAGSHIP', 'FAST')} title="Simulate multi-vector credential compromise and unauthorized extraction">
-                FLAGSHIP ATTACK
+              <button
+                className="btn btn-primary"
+                onClick={() => runScenario('FLAGSHIP', 'NORMAL')}
+                title="Execute canonical end-to-end attack: Account takeover, privilege escalation, datacenter withdrawal restriction, case creation and SHA-256 audit commitment"
+              >
+                RUN ATTACK SCENARIO
               </button>
-              <button className="btn btn-secondary" onClick={() => runScenario('TRAVEL', 'NORMAL')} title="Simulate verified cross-border access with baseline conformity">
+              <button
+                className="btn btn-secondary"
+                onClick={() => runScenario('TRAVEL', 'NORMAL')}
+                title="Simulate verified cross-border access with baseline conformity"
+              >
                 LEGITIMATE TRAVEL
               </button>
               <button className="btn btn-secondary" onClick={resetDemo} title="Reset all trader baselines and clear telemetry buffer">
@@ -2808,6 +2872,21 @@ function PersistentDecisionPanel({
       <div className="decision-recommendation-note">
         <b>SOP RECOMMENDATION:</b> {decision?.explanation?.recommendation || 'Maintain standard passive continuous monitoring.'}
       </div>
+
+      {(decision.audit_id || decision.case_id) && (
+        <div style={{ padding: '6px 14px', background: 'var(--bg-surface-0)', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 9, fontFamily: 'var(--font-mono)' }}>
+          {decision.audit_id && (
+            <span style={{ color: 'var(--text-secondary)' }}>
+              AUDIT: <b style={{ color: 'var(--accent-cobalt)' }}>{decision.audit_id}</b> {decision.audit_hash ? `(${decision.audit_hash.slice(0, 8)}…)` : ''}
+            </span>
+          )}
+          {decision.case_id && (
+            <span style={{ color: 'var(--state-critical)', fontWeight: 600 }}>
+              CASE: {decision.case_id}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="decision-actions-row">
         <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onInspect}>

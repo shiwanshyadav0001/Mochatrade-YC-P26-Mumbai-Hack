@@ -191,8 +191,11 @@ async def post_event(
         raise HTTPException(status_code=404, detail="Trader not found")
     except Exception:
         raise HTTPException(status_code=500, detail="Database write failed")
+    await broadcast("NEW_EVENT", result)
     await broadcast("RISK_UPDATED", result)
     await broadcast("GRAPH_UPDATED", engine.trader_graph(event.trader_id))
+    if result.get("case"):
+        await broadcast("CASE_CREATED", result["case"])
     return result
 
 
@@ -551,6 +554,12 @@ async def simulator_step(
         return {"complete": True, "message": "Scenario complete"}
     result = engine.ingest(queue.pop(0), actor["actor_id"])
     await broadcast("NEW_EVENT", result)
+    await broadcast("RISK_UPDATED", result)
+    trader_id = result.get("event", {}).get("trader_id")
+    if trader_id:
+        await broadcast("GRAPH_UPDATED", engine.trader_graph(trader_id))
+    if result.get("case"):
+        await broadcast("CASE_CREATED", result["case"])
     return {"complete": not queue, "remaining": len(queue), **result}
 
 
@@ -565,7 +574,13 @@ async def simulator_run(
         for event in events:
             result = engine.ingest(event, actor["actor_id"])
             await broadcast("NEW_EVENT", result)
-            await asyncio.sleep(0.4 if request.mode == "FAST" else 1.1)
+            await broadcast("RISK_UPDATED", result)
+            tid = result.get("event", {}).get("trader_id") or trader_id
+            if tid:
+                await broadcast("GRAPH_UPDATED", engine.trader_graph(tid))
+            if result.get("case"):
+                await broadcast("CASE_CREATED", result["case"])
+            await asyncio.sleep(0.45 if request.mode == "FAST" else 1.0)
         await broadcast("SCENARIO_COMPLETE", {"scenario": request.scenario, "trader_id": trader_id})
 
     asyncio.create_task(run_events())

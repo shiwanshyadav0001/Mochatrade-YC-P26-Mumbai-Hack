@@ -497,3 +497,73 @@ Transform remaining list-like, weakly interactive screens into fully interactive
 - **Backend Test Suite:** 78 passed out of 78 (`pytest` 100% pass rate in 22.65s).
 - **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) built cleanly in 129ms with 0 errors.
 - **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
+
+---
+
+## Sprint 1/7: Unified Deterministic Operational Intelligence Pipeline (September 11, 2026)
+
+### Objective
+Connect the entire NETRA continuous trust intelligence system into ONE real, deterministic operational story answering the core institutional question:
+**"Does this action make sense for this trader, right now?"**
+
+Eliminate disconnected surfaces, broken data flows, and race conditions by introducing a canonical event/decision representation (`ProcessedTrustDecision`), unifying live SSE broadcasts across all endpoints, synchronizing client-side state ingestion, and enabling a one-click flagship attack demonstration.
+
+### Key Architectural & Data Propagation Changes
+1. **Canonical `ProcessedTrustDecision` Single Source of Truth (`backend/engine.py`):**
+   - Strengthened `NetraEngine.ingest()` to return a complete, authoritative intelligence payload containing:
+     - `event`: Authoritative event record bound with `audit_id`, `audit_hash`, and linked `case_id`.
+     - `decision`: Full decision record with `signals`, `triggered_rules`, confidence, processing latency, policy version, and linked `case_id`.
+     - `risk`: Updated 12-dimensional risk posture and severity tier.
+     - `trust` / `trust_score`: Continuous numerical trust score.
+     - `enforcement`: Action sensitivity gateway decision and execution status.
+     - `explanation`: Contextual summary and structured evidence chain.
+     - `transition`: Trust transition record recording mathematical delta.
+     - `audit_record`: The exact cryptographic SHA-256 ledger record appended to the chain.
+     - `case`: Automatically created or active investigation case for the trader.
+     - `risk_events`: Specific elevated risk signal items generated for this event.
+     - `trader`: Complete updated trader profile.
+     - `graph`: Topological entity graph (nodes, edges, clusters) for the trader.
+2. **Deterministic Seed Preservation in `_isolate_scenario_trader` (`backend/engine.py`):**
+   - Corrected historical seed event matching from exact `source == 'seed'` to `str(e.get("source", "")).startswith("seed")`.
+   - Preserved historical seed decisions and seed risk items while cleanly isolating scenario replay residue, preventing baseline degradation on subsequent scenario runs.
+3. **Unified Real-Time Event Broadcasting (`backend/main.py`):**
+   - Synchronized event dispatch across `/api/events` (`post_event`), `/api/simulator/step`, and `/api/simulator/run`.
+   - Every ingested event now consistently broadcasts:
+     - `NEW_EVENT`: The complete `ProcessedTrustDecision` payload.
+     - `RISK_UPDATED`: For listeners subscribing to risk evaluations.
+     - `GRAPH_UPDATED`: Updated topological graph for the target trader.
+     - `CASE_CREATED`: Newly opened investigation cases.
+4. **Synchronous Client State Ingestion & Debounced Reconciliation (`frontend/src/App.tsx`):**
+   - In `stream.onmessage`, immediately and synchronously updates `events`, `decisions`, `audit`, `cases`, `riskEvents`, `traders`, `selected`, and `graph` directly from the incoming canonical payload without waiting for roundtrip HTTP requests.
+   - Introduced `debouncedRefreshAll()` with a 450ms debounce window to prevent HTTP request storms (up to 11 concurrent REST calls per tick) during fast scenario bursts.
+   - Fixed `runScenario` seed preservation filter in the frontend to check `e.source && e.source.startsWith('seed')`.
+   - Removed destructive `setEvents([])` wipe on `DEMO_RESET`, preventing empty screen flickers.
+5. **Deterministic Flagship Attack Scenario ("RUN ATTACK SCENARIO"):**
+   - Highlighted `RUN ATTACK SCENARIO` prominently on the top execution bar as a primary action.
+   - Replays the canonical 6-stage attack against Trader #7842 (Aarav Mehta):
+     1. `LOGIN`: Baseline match (Trust: ~94, Policy: ALLOW).
+     2. `NEW_DEVICE`: Novel device identifier registered.
+     3. `IP_CHANGE`: Datacenter ASN / hosting provider network shift.
+     4. `DEPOSIT`: Abnormal $25k capital influx (vs $3k baseline).
+     5. `LEVERAGE_CHANGE`: 50x leverage surge.
+     6. `WITHDRAWAL`: $24k extraction attempt to fresh external wallet -> Trust drops <45, Policy escalates to RESTRICT/BLOCK, Action is held, automatic Investigation Case is created, cryptographic SHA-256 audit record is chained, and Topology Graph resolves the attack infrastructure.
+6. **Institutional Decision Explanation Surface Polish:**
+   - Decision Panel now displays cryptographic `AUDIT` ID, SHA-256 hash prefix, and active `CASE` linkage directly on the card.
+7. **System-Wide Cross-Screen Propagation Verified:**
+   - The same event is observable across all 10 intelligence surfaces:
+     - `Overview`: Fleet threat level and Highest-Priority Threat indicator update.
+     - `Live Monitor`: Real-time telemetry feed and trust trajectory curve reflect the drop.
+     - `Traders`: Target trader trust degrades and shifts in the sorted queue.
+     - `Risk Events`: Elevated signals appear with full evidence and feature attribution.
+     - `Topology Graph`: Device, datacenter IP, and destination wallet appear as connected nodes.
+     - `Cases & Triage`: Automatic case appears with linked trigger event.
+     - `Policy Matrix`: Policy rule firing frequency increases.
+     - `Scenario Lab`: Step-by-step or full attack execution mirrors system state.
+     - `Audit Vault`: New SHA-256 audit record appears and chain verification succeeds 100%.
+     - `Analytics`: Fleet population metrics and evaluation distributions update.
+
+### Test Results & Build Verification
+- **Backend Test Suite:** 79 passed out of 79 (`python -m pytest` with 100% pass rate in 22.30s across `test_api.py`, `test_auth.py`, `test_engine.py`, `test_single_event_propagation.py`).
+- **Integration Test Added:** `test_canonical_processed_trust_decision_and_flagship_scenario` verifying all 6 stages of the Flagship scenario.
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 128ms with 0 errors.
+- **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
