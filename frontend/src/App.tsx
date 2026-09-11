@@ -8,6 +8,7 @@ import { EvidenceDrawer } from './components/EvidenceDrawer'
 import { ForensicCaseWorkbench } from './components/ForensicCaseWorkbench'
 import { InteractiveGraph } from './components/InteractiveGraph'
 import { LiveTelemetryMonitor } from './components/LiveTelemetryMonitor'
+import { OperationalDemoEngine } from './components/OperationalDemoEngine'
 import { PolicyMatrixSimulator } from './components/PolicyMatrixSimulator'
 import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
 import { ScenarioAttackReplay } from './components/ScenarioAttackReplay'
@@ -110,6 +111,8 @@ export default function App() {
   const [running, setRunning] = useState<string | null>(null)
   const [nodeInfo, setNodeInfo] = useState('')
   const [cmdOpen, setCmdOpen] = useState(false)
+  const [demoModalOpen, setDemoModalOpen] = useState(false)
+  const [simulatorMode, setSimulatorMode] = useState<'UNIFIED' | 'LEGACY'>('UNIFIED')
 
   // Observatory & Security Protocols State
   const [observatory, setObservatory] = useState<ObservatoryRecord[]>([])
@@ -465,6 +468,14 @@ export default function App() {
   }
 
   const inspectEvent = (event: Event) => {
+    if (event.event_id) {
+      setTargetEventId(event.event_id)
+    }
+    if (event.trader_id && event.trader_id !== selectedIdRef.current) {
+      setSelectedId(event.trader_id)
+      selectedIdRef.current = event.trader_id
+      refreshSelected(event.trader_id)
+    }
     const matchedDecision = decisions.find(d => (event.event_id && d.event_id === event.event_id) || d.timestamp === event.timestamp || d.trader_id === event.trader_id)
     const matchedTrader = traders.find(t => t.trader_id === event.trader_id)
     setDrawerData({ event, decision: matchedDecision, trader: matchedTrader })
@@ -472,20 +483,41 @@ export default function App() {
   }
 
   const inspectDecision = (decision: Decision) => {
-    const matchedEvent = events.find(e => e.timestamp === decision.timestamp)
-    setDrawerData({ decision, event: matchedEvent })
+    if (decision.event_id) {
+      setTargetEventId(decision.event_id)
+    }
+    if (decision.trader_id && decision.trader_id !== selectedIdRef.current) {
+      setSelectedId(decision.trader_id)
+      selectedIdRef.current = decision.trader_id
+      refreshSelected(decision.trader_id)
+    }
+    const matchedEvent = events.find(e => (decision.event_id && e.event_id === decision.event_id) || e.timestamp === decision.timestamp)
+    setDrawerData({ decision, event: matchedEvent, trader: selected })
     setDrawerOpen(true)
   }
 
   const inspectTrader = (trader: Trader) => {
+    if (trader.trader_id && trader.trader_id !== selectedIdRef.current) {
+      setSelectedId(trader.trader_id)
+      selectedIdRef.current = trader.trader_id
+      refreshSelected(trader.trader_id)
+    }
     setDrawerData({ trader })
     setDrawerOpen(true)
   }
 
   const inspectCase = (c: Case) => {
+    if (c.trader_id && c.trader_id !== selectedIdRef.current) {
+      setSelectedId(c.trader_id)
+      selectedIdRef.current = c.trader_id
+      refreshSelected(c.trader_id)
+    }
     const matchedTrader = traders.find(t => t.trader_id === c.trader_id)
-    const matchedDecision = decisions.find(d => d.trader_id === c.trader_id)
-    const matchedEvent = events.find(e => e.trader_id === c.trader_id)
+    const matchedDecision = decisions.find(d => (c.case_id && d.case_id === c.case_id) || d.trader_id === c.trader_id)
+    const matchedEvent = events.find(e => (matchedDecision?.event_id && e.event_id === matchedDecision.event_id) || e.trader_id === c.trader_id)
+    if (matchedEvent?.event_id) {
+      setTargetEventId(matchedEvent.event_id)
+    }
     setDrawerData({ caseItem: c, trader: matchedTrader, decision: matchedDecision, event: matchedEvent })
     setDrawerOpen(true)
   }
@@ -973,6 +1005,22 @@ export default function App() {
     return decisions.find(d => d.trader_id === selectedId) || (selected ? undefined : decisions[0])
   }, [decisions, selectedId, selected])
 
+  const targetEvent = useMemo(() => {
+    if (targetEventId) {
+      const match = events.find(e => e.event_id === targetEventId)
+      if (match) return match
+    }
+    return events.find(e => e.trader_id === selectedId) || events[0]
+  }, [events, targetEventId, selectedId])
+
+  const targetDecision = useMemo(() => {
+    if (targetEventId) {
+      const match = decisions.find(d => d.event_id === targetEventId)
+      if (match) return match
+    }
+    return latestDecision
+  }, [decisions, targetEventId, latestDecision])
+
   const populationStats = useMemo(() => {
     const total = traders.length
     const trusted = traders.filter(t => t.trust_score >= 70).length
@@ -1144,8 +1192,16 @@ export default function App() {
               </span>
               <button
                 className="btn btn-primary"
+                onClick={() => setDemoModalOpen(true)}
+                title="Launch Flagship Unified Operational Demonstration Engine: 10-Stage Progression, Decision Replay, What-If Counterfactuals, Blast Radius and Cryptographic Verification"
+                style={{ background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)', borderColor: '#60a5fa', fontWeight: 700 }}
+              >
+                ⚡ RUN FLAGSHIP DEMO
+              </button>
+              <button
+                className="btn btn-secondary"
                 onClick={() => runScenario('FLAGSHIP', 'NORMAL')}
-                title="Execute canonical end-to-end attack: Account takeover, privilege escalation, datacenter withdrawal restriction, case creation and SHA-256 audit commitment"
+                title="Execute background canonical end-to-end attack: Account takeover, privilege escalation, datacenter withdrawal restriction, case creation and SHA-256 audit commitment"
               >
                 RUN ATTACK SCENARIO
               </button>
@@ -1334,10 +1390,10 @@ export default function App() {
               {/* Signature Component: Why NETRA Decided This (7-Stage Causal Reasoning Chain) */}
               <ReasoningEvidenceChain
                 trader={selected}
-                decision={latestDecision}
-                latestEvent={events[0]}
+                decision={targetDecision || latestDecision}
+                latestEvent={targetEvent}
                 graph={graph}
-                onInspectEvidence={() => latestDecision && inspectDecision(latestDecision)}
+                onInspectEvidence={() => (targetDecision || latestDecision) && inspectDecision(targetDecision || latestDecision!)}
                 onOpenTopology={() => setView('RELATIONSHIP GRAPH')}
                 onNavigateToAudit={handleNavigateToAudit}
                 onNavigateToCase={(caseId) => {
@@ -2526,29 +2582,93 @@ export default function App() {
 
           {/* VIEW: SIMULATOR */}
           {view === 'SIMULATOR' && (
-            <ScenarioAttackReplay
-              trader={selected}
-              allTraders={traders}
-              decisions={decisions}
-              latestDecision={latestDecision}
-              events={events}
-              graph={graph}
-              onInspectEvidence={(d, ev, t) => {
-                setDrawerData({ decision: d, event: ev, trader: t })
-                setDrawerOpen(true)
-              }}
-              onInspectTrader={inspectTrader}
-              onSelectTrader={id => {
-                setSelectedId(id)
-                refreshSelected(id)
-              }}
-              onNavigate={setView}
-              onStepUpVerify={stepUpVerify}
-              onCreateCase={createCase}
-              onRefreshAll={refreshAll}
-              onNavigateToAudit={handleNavigateToAudit}
-              onNavigateToEvent={handleNavigateToEvent}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-surface-1)',
+                padding: '8px 14px',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-xs)',
+                flexWrap: 'wrap',
+                gap: 8,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className="mono" style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 700 }}>
+                    SIMULATION ENVIRONMENT:
+                  </span>
+                  <button
+                    className={`btn ${simulatorMode === 'UNIFIED' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: 9.5, padding: '3px 10px' }}
+                    onClick={() => setSimulatorMode('UNIFIED')}
+                  >
+                    ⚡ FLAGSHIP OPERATIONAL DEMONSTRATION ENGINE (PHASE 5)
+                  </button>
+                  <button
+                    className={`btn ${simulatorMode === 'LEGACY' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: 9.5, padding: '3px 10px' }}
+                    onClick={() => setSimulatorMode('LEGACY')}
+                  >
+                    ATTACK REPLAY WORKBENCH
+                  </button>
+                </div>
+                <div className="mono" style={{ fontSize: 9.5, color: 'var(--text-secondary)' }}>
+                  DETERMINISTIC KERNEL REPLAY // REAL BACKEND INGESTION
+                </div>
+              </div>
+
+              {simulatorMode === 'UNIFIED' ? (
+                <OperationalDemoEngine
+                  trader={selected}
+                  allTraders={traders}
+                  decisions={decisions}
+                  latestDecision={latestDecision}
+                  events={events}
+                  cases={cases}
+                  auditRecords={audit}
+                  graph={graph}
+                  onInspectEvidence={(d, ev, t) => {
+                    setDrawerData({ decision: d, event: ev, trader: t })
+                    setDrawerOpen(true)
+                  }}
+                  onInspectTrader={inspectTrader}
+                  onSelectTrader={id => {
+                    setSelectedId(id)
+                    refreshSelected(id)
+                  }}
+                  onNavigate={setView}
+                  onNavigateToAudit={handleNavigateToAudit}
+                  onNavigateToEvent={handleNavigateToEvent}
+                  onRefreshAll={refreshAll}
+                  isModal={false}
+                />
+              ) : (
+                <ScenarioAttackReplay
+                  trader={selected}
+                  allTraders={traders}
+                  decisions={decisions}
+                  latestDecision={latestDecision}
+                  events={events}
+                  graph={graph}
+                  onInspectEvidence={(d, ev, t) => {
+                    setDrawerData({ decision: d, event: ev, trader: t })
+                    setDrawerOpen(true)
+                  }}
+                  onInspectTrader={inspectTrader}
+                  onSelectTrader={id => {
+                    setSelectedId(id)
+                    refreshSelected(id)
+                  }}
+                  onNavigate={setView}
+                  onStepUpVerify={stepUpVerify}
+                  onCreateCase={createCase}
+                  onRefreshAll={refreshAll}
+                  onNavigateToAudit={handleNavigateToAudit}
+                  onNavigateToEvent={handleNavigateToEvent}
+                />
+              )}
+            </div>
           )}
 
           {/* VIEW: AUDIT */}
@@ -2868,6 +2988,63 @@ export default function App() {
           onRequestRecovery={handleRequestRecovery}
           onVerifyRecovery={handleVerifyRecovery}
         />
+      )}
+
+      {/* Flagship Unified Operational Demonstration Engine Modal */}
+      {demoModalOpen && (
+        <div
+          className="policy-modal-overlay"
+          onClick={() => setDemoModalOpen(false)}
+          style={{ zIndex: 1000, background: 'rgba(5, 10, 20, 0.85)', backdropFilter: 'blur(6px)' }}
+        >
+          <div
+            className="policy-modal-content"
+            style={{
+              maxWidth: 1200,
+              width: '95%',
+              padding: 0,
+              background: 'transparent',
+              border: 'none',
+              boxShadow: 'none',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <OperationalDemoEngine
+              trader={selected}
+              allTraders={traders}
+              decisions={decisions}
+              latestDecision={latestDecision}
+              events={events}
+              cases={cases}
+              auditRecords={audit}
+              graph={graph}
+              onInspectEvidence={(d, ev, t) => {
+                setDrawerData({ decision: d, event: ev, trader: t })
+                setDrawerOpen(true)
+              }}
+              onInspectTrader={inspectTrader}
+              onSelectTrader={id => {
+                setSelectedId(id)
+                refreshSelected(id)
+              }}
+              onNavigate={viewName => {
+                setDemoModalOpen(false)
+                setView(viewName)
+              }}
+              onNavigateToAudit={(auditId, subject) => {
+                setDemoModalOpen(false)
+                handleNavigateToAudit(auditId, subject)
+              }}
+              onNavigateToEvent={(eventId, traderId) => {
+                setDemoModalOpen(false)
+                handleNavigateToEvent(eventId, traderId)
+              }}
+              onRefreshAll={refreshAll}
+              onCloseModal={() => setDemoModalOpen(false)}
+              isModal={true}
+            />
+          </div>
+        </div>
       )}
     </div>
   )

@@ -2588,7 +2588,15 @@ class NetraEngine:
             trader = self.traders.get("7842", list(self.traders.values())[0])
 
         baseline = trader.get("baseline", {})
-        prior = float(trader["trust_score"])
+        target_event_id = event_payload.get("event_id")
+        prior = None
+        if target_event_id:
+            for t in reversed(self.transitions.get(trader_id, [])):
+                if t.get("event_id") == target_event_id:
+                    prior = float(t.get("previous_score", trader["trust_score"]))
+                    break
+        if prior is None:
+            prior = float(event_payload.get("previous_score") or trader["trust_score"])
         event_type = event_payload.get("event_type", "TRADE").upper()
 
         # Build original event record
