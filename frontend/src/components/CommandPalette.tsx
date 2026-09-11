@@ -59,7 +59,6 @@ export function CommandPalette({
       { id: 'nav-audit', title: 'AUDIT VAULT // Tamper-Evident Immutable Log', category: 'NAVIGATION', action: () => onNavigate('AUDIT') },
       { id: 'nav-analytics', title: 'ANALYTICS // Risk Engine Metrics & Evaluation Latency', category: 'NAVIGATION', action: () => onNavigate('ANALYTICS') },
 
-      { id: 'act-flagship-demo', title: 'FLAGSHIP // Unified Operational Demonstration Engine (Phase 5 Cockpit)', category: 'SCENARIOS', action: () => onNavigate('SIMULATOR'), badge: 'FLAGSHIP' },
       { id: 'act-flagship', title: 'EXECUTE // Flagship Suspicious Withdrawal Surge (#7842)', category: 'SCENARIOS', action: () => onRunScenario('FLAGSHIP', 'FAST'), badge: 'ATTACK' },
       { id: 'act-surge', title: 'EXECUTE // Compounding Anomaly Attack Surge (#7842)', category: 'SCENARIOS', action: () => onRunScenario('ATTACK_SURGE', 'FAST'), badge: 'CRITICAL' },
       { id: 'act-travel', title: 'EXECUTE // Legitimate Cross-Border Travel (#7842)', category: 'SCENARIOS', action: () => onRunScenario('TRAVEL', 'NORMAL') },

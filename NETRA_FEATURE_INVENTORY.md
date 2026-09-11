@@ -120,12 +120,6 @@
 - [✓] Multi-Breakpoint Institutional Responsive Design (1440px, 1280px, 1080px, 900px, 768px with touch-scroll tables and adaptive KPI grid)
 - [✓] Cross-Screen Operational Integration (Traders → Live Monitor, Relationship Graph, Baseline Reset, Step-Up)
 - [✓] Zero Mock/Fake Telemetry Fallbacks (All counters, threats, baseline metrics, and envelopes are strictly data-driven)
-- [✓] Unified Operational Demonstration Engine (`OperationalDemoEngine.tsx` with 10-stage canonical progression)
-- [✓] Incident Reconstruction Timeline & Scrubber (Play, Pause, Jump-To-Step, Speed Control)
-- [✓] Interactive "What If?" Counterfactual Simulation Cockpit with Presets & Mitigation Chips
-- [✓] Topology Attack Path & Real-Time Blast Radius HUD Overlay (`InteractiveGraph.tsx`)
-- [✓] Multi-Scenario Demonstration Switcher (Flagship, Travel, Fraud Ring, Takeover, Surge, Normal)
-- [✓] One-Click Cryptographic Ledger Chain Proof Verification (`/api/audit/verify`)
 
 ---
 

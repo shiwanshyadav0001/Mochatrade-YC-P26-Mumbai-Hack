@@ -72,42 +72,12 @@ export function InteractiveGraph({ graph, onSelectNode, selectedNodeId }: Intera
     setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
   }
 
-  const [showBlastRadius, setShowBlastRadius] = useState<boolean>(true)
   const handleMouseUp = () => setIsDragging(false)
-
-  // Calculate blast radius metrics from real graph topology
-  const blastRadiusInfo = useMemo(() => {
-    const criticalNodes = rawNodes.filter(n => n.risk > 70 || n.is_cluster)
-    const criticalIds = new Set(criticalNodes.map(n => n.id))
-
-    // Find all 1-hop and 2-hop edges connected to critical nodes or selected node
-    const focusIds = new Set<string>(criticalIds)
-    if (selectedNodeId) focusIds.add(selectedNodeId)
-
-    const attackEdges = rawEdges.filter(e => focusIds.has(e.source) || focusIds.has(e.target))
-    const blastEntityIds = new Set<string>()
-    attackEdges.forEach(e => {
-      blastEntityIds.add(e.source)
-      blastEntityIds.add(e.target)
-    })
-
-    const compromisedTraders = rawNodes.filter(n => blastEntityIds.has(n.id) && n.type === 'TRADER')
-    const compromisedInfra = rawNodes.filter(n => blastEntityIds.has(n.id) && n.type !== 'TRADER')
-
-    return {
-      blastSize: blastEntityIds.size,
-      compromisedTraders,
-      compromisedInfra,
-      hasAttackPath: attackEdges.length > 0,
-      attackEdges,
-      focusIds,
-    }
-  }, [rawNodes, rawEdges, selectedNodeId])
 
   return (
     <div className="panel" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div className="graph-toolbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginRight: 4 }}>
             FILTER:
           </span>
@@ -120,14 +90,6 @@ export function InteractiveGraph({ graph, onSelectNode, selectedNodeId }: Intera
               {type}
             </button>
           ))}
-          <button
-            className={`btn ${showBlastRadius ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ fontSize: 9, padding: '2px 8px', marginLeft: 6 }}
-            onClick={() => setShowBlastRadius(prev => !prev)}
-            title="Toggle Attack Path highlighting and Blast Radius HUD"
-          >
-            {showBlastRadius ? '💥 BLAST RADIUS: ON' : 'BLAST RADIUS: OFF'}
-          </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -222,46 +184,17 @@ export function InteractiveGraph({ graph, onSelectNode, selectedNodeId }: Intera
             const dst = nodePositions[edge.target]
             if (!src || !dst) return null
             const isSelected = selectedNodeId === edge.source || selectedNodeId === edge.target
-            const isAttackEdge = showBlastRadius && (blastRadiusInfo.focusIds.has(edge.source) || blastRadiusInfo.focusIds.has(edge.target))
-
-            let edgeStroke = 'rgba(255,255,255,0.1)'
-            let edgeWidth = 1
-            if (isSelected) {
-              edgeStroke = 'var(--accent-cobalt)'
-              edgeWidth = 2
-            } else if (isAttackEdge) {
-              edgeStroke = 'rgba(220, 38, 38, 0.7)'
-              edgeWidth = 1.8
-            }
-
-            const midX = (src.x + dst.x) / 2
-            const midY = (src.y + dst.y) / 2
-
             return (
-              <g key={`${edge.source}-${edge.target}-${idx}`}>
-                <line
-                  x1={src.x}
-                  y1={src.y}
-                  x2={dst.x}
-                  y2={dst.y}
-                  stroke={edgeStroke}
-                  strokeWidth={edgeWidth}
-                  strokeDasharray={isAttackEdge ? '4 3' : edge.type.includes('USES') ? '3 3' : undefined}
-                />
-                {(isAttackEdge || isSelected) && (
-                  <text
-                    x={midX}
-                    y={midY - 4}
-                    fill={isAttackEdge ? 'var(--state-critical)' : 'var(--accent-cobalt)'}
-                    fontSize="7.5px"
-                    fontFamily="var(--font-mono)"
-                    textAnchor="middle"
-                    style={{ pointerEvents: 'none', background: 'rgba(0,0,0,0.7)' }}
-                  >
-                    {edge.type}
-                  </text>
-                )}
-              </g>
+              <line
+                key={`${edge.source}-${edge.target}-${idx}`}
+                x1={src.x}
+                y1={src.y}
+                x2={dst.x}
+                y2={dst.y}
+                stroke={isSelected ? 'var(--accent-cobalt)' : 'rgba(255,255,255,0.1)'}
+                strokeWidth={isSelected ? 1.5 : 1}
+                strokeDasharray={edge.type.includes('USES') ? '3 3' : undefined}
+              />
             )
           })}
 
@@ -271,12 +204,8 @@ export function InteractiveGraph({ graph, onSelectNode, selectedNodeId }: Intera
             if (!pos) return null
             const isSelected = selectedNodeId === node.id
             const isDanger = node.is_cluster || node.risk > 70
-            const inBlast = showBlastRadius && blastRadiusInfo.focusIds.has(node.id)
-
             const strokeColor = isDanger
               ? 'var(--state-critical)'
-              : inBlast
-              ? 'var(--state-elevated)'
               : node.type === 'TRADER'
               ? 'var(--accent-cobalt)'
               : 'var(--border-strong)'
@@ -288,16 +217,6 @@ export function InteractiveGraph({ graph, onSelectNode, selectedNodeId }: Intera
                 onClick={() => onSelectNode?.(node.id)}
                 style={{ cursor: 'pointer' }}
               >
-                {/* Attack Path Pulse Halo */}
-                {inBlast && (
-                  <circle
-                    r={30}
-                    fill="none"
-                    stroke={isDanger ? 'rgba(220, 38, 38, 0.3)' : 'rgba(217, 119, 6, 0.25)'}
-                    strokeWidth={1.5}
-                    strokeDasharray="2 2"
-                  />
-                )}
                 {/* Node Box */}
                 <rect
                   x={-42}
@@ -307,7 +226,7 @@ export function InteractiveGraph({ graph, onSelectNode, selectedNodeId }: Intera
                   rx={3}
                   fill="var(--bg-surface-0)"
                   stroke={isSelected ? '#fff' : strokeColor}
-                  strokeWidth={isSelected ? 2 : isDanger ? 1.5 : 1}
+                  strokeWidth={isSelected ? 1.5 : 1}
                 />
                 <text
                   x={0}
@@ -334,43 +253,6 @@ export function InteractiveGraph({ graph, onSelectNode, selectedNodeId }: Intera
             )
           })}
         </svg>
-
-        {/* BLAST RADIUS HUD OVERLAY */}
-        {showBlastRadius && blastRadiusInfo.hasAttackPath && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 12,
-              left: 12,
-              background: 'rgba(10, 15, 26, 0.92)',
-              border: '1px solid rgba(220, 38, 38, 0.4)',
-              borderRadius: 'var(--radius-xs)',
-              padding: '10px 12px',
-              maxWidth: 260,
-              backdropFilter: 'blur(4px)',
-              pointerEvents: 'none',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <span className="status-dot critical" />
-              <span className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--state-critical)' }}>
-                BLAST RADIUS HUD // ACTIVE RISK
-              </span>
-            </div>
-            <div className="mono" style={{ fontSize: 10, color: '#fff', marginBottom: 4 }}>
-              AFFECTED ENTITIES: <b>{blastRadiusInfo.blastSize} DIRECT / LINKED</b>
-            </div>
-            <div style={{ fontSize: 9.5, color: 'var(--text-secondary)', lineHeight: 1.3 }}>
-              {blastRadiusInfo.compromisedTraders.length > 0 && (
-                <div>• Linked Traders: {blastRadiusInfo.compromisedTraders.map(t => t.label).join(', ')}</div>
-              )}
-              {blastRadiusInfo.compromisedInfra.length > 0 && (
-                <div>• Shared Infra: {blastRadiusInfo.compromisedInfra.map(i => i.label).join(', ')}</div>
-              )}
-            </div>
-          </div>
-        )}
 
         {nodes.length === 0 && (
           <div
