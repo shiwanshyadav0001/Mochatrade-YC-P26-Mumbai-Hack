@@ -119,7 +119,7 @@ npm run dev
 
 ## Running Test Suite
 
-Execute the full automated backend test suite (68 tests covering engine algorithms, APIs, auth, graph traversal, and ML anomaly models):
+Execute the full automated backend test suite (78 tests covering engine algorithms, APIs, auth, graph traversal, ML anomaly models, and single-event causal loop propagation):
 
 ```powershell
 cd backend
@@ -131,6 +131,7 @@ Or run specific suites:
 python -m pytest test_engine.py -q
 python -m pytest test_api.py -q
 python -m pytest test_auth.py -q
+python -m pytest test_single_event_propagation.py -q
 ```
 
 ---

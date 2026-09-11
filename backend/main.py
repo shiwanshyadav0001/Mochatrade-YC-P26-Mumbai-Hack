@@ -68,8 +68,28 @@ class CasePatch(BaseModel):
 
 
 class ScenarioRequest(BaseModel):
-    scenario: Literal["FLAGSHIP", "TRAVEL", "LEGITIMATE_TRAVEL", "FRAUD_RING", "RING", "TAKEOVER"]
+    scenario: str
     mode: Literal["FAST", "NORMAL"] = "NORMAL"
+
+    @field_validator("scenario")
+    @classmethod
+    def valid_scenario(cls, val: str) -> str:
+        val = val.upper()
+        valid = {
+            "FLAGSHIP", "TRAVEL", "LEGITIMATE_TRAVEL", "IMPOSSIBLE_TRAVEL",
+            "FRAUD_RING", "RING", "COLLUSION", "COLLUSION_CLUSTER",
+            "TAKEOVER", "ACCOUNT_TAKEOVER",
+            "NORMAL", "NORMAL_ACTIVITY",
+            "NEW_DEVICE",
+            "CREDENTIALS", "CREDENTIAL_CHANGE", "2FA_CHANGE", "TWO_FACTOR_CHANGE",
+            "LEVERAGE_SPIKE", "LEVERAGE",
+            "WITHDRAWAL", "ABNORMAL_WITHDRAWAL",
+            "ATTACK_SURGE", "SURGE",
+            "HIGH_VALUE", "LEGITIMATE_HIGH_VALUE", "WHALE", "LEGITIMATE_HIGH_VALUE_ACTIVITY",
+        }
+        if val not in valid:
+            raise ValueError(f"Unknown scenario: {val}. Supported: {sorted(valid)}")
+        return val
 
 
 class StepUpRequest(BaseModel):

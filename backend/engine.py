@@ -163,6 +163,35 @@ class NetraEngine:
             db_links = db.query(GraphLinkModel).all()
             self.graph_links = [l.to_dict() for l in db_links]
 
+            if not any(l.get("source") == "TRADER-7842" for l in self.graph_links):
+                baseline_entity_map = {
+                    "7842": [("DEV-7842-PRIMARY", "USED_DEVICE"), ("IP-203.0.113.22", "LOGGED_FROM"), ("WALLET-7842-VAULT", "WITHDREW_TO")],
+                    "7001": [("DEV-7001-A", "USED_DEVICE"), ("IP-198.51.100.1", "LOGGED_FROM")],
+                    "7002": [("DEV-7002-TRAVEL", "USED_DEVICE"), ("IP-203.0.113.77", "LOGGED_FROM")],
+                    "7003": [("DEV-7003-NEW", "USED_DEVICE"), ("IP-198.18.0.55", "LOGGED_FROM")],
+                    "7004": [("DEV-ATO", "USED_DEVICE"), ("IP-198.18.0.99", "LOGGED_FROM"), ("WALLET-ATO-FRESH", "WITHDREW_TO")],
+                }
+                new_models = []
+                for tid, entities in baseline_entity_map.items():
+                    for target_entity, rel in entities:
+                        link = {
+                            "source": f"TRADER-{tid}",
+                            "target": target_entity,
+                            "type": rel,
+                            "evidence": [f"SEED-{tid}"],
+                        }
+                        self.graph_links.append(link)
+                        new_models.append(
+                            GraphLinkModel(
+                                source=link["source"],
+                                target=link["target"],
+                                link_type=link["type"],
+                                evidence_json=json.dumps(link["evidence"]),
+                            )
+                        )
+                if new_models:
+                    db.bulk_save_objects(new_models)
+
             policy_row = db.query(PolicyModel).first()
             if policy_row:
                 self.policy = policy_row.to_dict()
@@ -367,6 +396,32 @@ class NetraEngine:
                         leverage=ev["leverage"],
                         metadata_json=json.dumps(ev["metadata"]),
                         risk_relevance=ev["risk_relevance"],
+                    )
+                )
+
+        # Seed baseline topology entities for flagship trader 7842 and representative profiles
+        baseline_entity_map = {
+            "7842": [("DEV-7842-PRIMARY", "USED_DEVICE"), ("IP-203.0.113.22", "LOGGED_FROM"), ("WALLET-7842-VAULT", "WITHDREW_TO")],
+            "7001": [("DEV-7001-A", "USED_DEVICE"), ("IP-198.51.100.1", "LOGGED_FROM")],
+            "7002": [("DEV-7002-TRAVEL", "USED_DEVICE"), ("IP-203.0.113.77", "LOGGED_FROM")],
+            "7003": [("DEV-7003-NEW", "USED_DEVICE"), ("IP-198.18.0.55", "LOGGED_FROM")],
+            "7004": [("DEV-ATO", "USED_DEVICE"), ("IP-198.18.0.99", "LOGGED_FROM"), ("WALLET-ATO-FRESH", "WITHDREW_TO")],
+        }
+        for tid, entities in baseline_entity_map.items():
+            for target_entity, rel in entities:
+                link = {
+                    "source": f"TRADER-{tid}",
+                    "target": target_entity,
+                    "type": rel,
+                    "evidence": [f"SEED-{tid}"],
+                }
+                self.graph_links.append(link)
+                link_records.append(
+                    GraphLinkModel(
+                        source=link["source"],
+                        target=link["target"],
+                        link_type=link["type"],
+                        evidence_json=json.dumps(link["evidence"]),
                     )
                 )
 
@@ -1650,7 +1705,18 @@ class NetraEngine:
                     if event.event_id not in existing["evidence"]:
                         existing["evidence"].append(event.event_id)
                 else:
-                    self.graph_links.append({"source": source, "target": target, "type": relation, "evidence": [event.event_id]})
+                    new_link = {"source": source, "target": target, "type": relation, "evidence": [event.event_id]}
+                    self.graph_links.append(new_link)
+                    try:
+                        with get_db() as db:
+                            db.add(GraphLinkModel(
+                                source=new_link["source"],
+                                target=new_link["target"],
+                                link_type=new_link["type"],
+                                evidence_json=json.dumps(new_link["evidence"]),
+                            ))
+                    except Exception:
+                        pass
 
     def trader_graph(self, trader_id: str) -> dict[str, Any]:
         """Backward-compatible graph topology endpoint for frontend consumers."""

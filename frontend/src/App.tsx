@@ -1839,14 +1839,20 @@ export default function App() {
                   selectedNodeId={nodeInfo}
                   onSelectNode={id => {
                     setNodeInfo(id)
-                    inspectEvent({
-                      event_id: `ENTITY-${id}`,
-                      timestamp: new Date().toISOString(),
-                      trader_id: selectedId,
-                      event_type: 'ENTITY_LOOKUP',
-                      source: 'topology-graph',
-                      risk_relevance: 'high',
+                    const activeGraph = graphMode === 'SYSTEM' ? systemGraph : graph
+                    const matchedNode = activeGraph?.nodes?.find(n => n.id === id)
+                    const connectedEdges = activeGraph?.edges?.filter(e => e.source === id || e.target === id)
+                    const inferredType = matchedNode?.type || (id.startsWith('TRADER-') ? 'TRADER' : id.startsWith('DEV-') ? 'DEVICE' : id.startsWith('IP-') ? 'IP' : 'WALLET')
+                    setDrawerData({
+                      entity: {
+                        id,
+                        type: inferredType,
+                        risk: matchedNode?.risk,
+                        is_cluster: matchedNode?.is_cluster,
+                        edges: connectedEdges,
+                      },
                     })
+                    setDrawerOpen(true)
                   }}
                 />
               </div>
@@ -1951,6 +1957,10 @@ export default function App() {
                 setDrawerOpen(true)
               }}
               onInspectTrader={inspectTrader}
+              onSelectTrader={id => {
+                setSelectedId(id)
+                refreshSelected(id)
+              }}
               onNavigate={setView}
               onStepUpVerify={stepUpVerify}
               onCreateCase={createCase}

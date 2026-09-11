@@ -104,9 +104,10 @@
 - [x] Unified Risk Incidents Feed Toggle (`/api/risk-events` vs all events)
 - [x] System-Wide Infrastructure Graph & Detected Cluster Cards View Toggle
 - [x] Dynamic Sequence Trace Visualizer (Driven by trader timeline)
-- [x] UI Error Boundary Shield (Zero black-screen crashes; resilient fallback with error tracing)
 - [x] Dual-Contract Risk Events Grid (Backward-compatible handling of both structured and legacy risk payloads)
-- [x] Interactive Attack Scenario Replay (Dynamic trader name and baseline alignment for Maya Chen and Kavita Reddy)
+- [x] Interactive Attack Scenario Replay (8 first-class scenarios including ATTACK_SURGE, FLAGSHIP, TRAVEL, FRAUD_RING, TAKEOVER, NORMAL_ACTIVITY, LEVERAGE_SPIKE, HIGH_VALUE with auto-focus trader synchronization)
+- [x] Baseline Topology Entity Hydration & Edge Persistence (Seed primary device, IP, wallet for #7842 and fleet, persisted in SQLite)
+- [x] Multi-Breakpoint Institutional Responsive Design (1440px, 1280px, 1080px, 900px, 768px with touch-scroll tables and adaptive KPI grid)
 
 ---
 

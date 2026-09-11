@@ -397,3 +397,40 @@ Eliminate the empty/disconnected screens problem across NETRA. Transform the sys
 - **Backend Test Suite:** 76 passed out of 76 (`python -m pytest` with 100% pass rate in 22.06s across all 4 test suites: `test_api.py`, `test_auth.py`, `test_engine.py`, `test_single_event_propagation.py`).
 - **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 219ms with 0 errors.
 - **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
+
+---
+
+## Phase 4B: Live Cross-Screen Operational Product & Forensic Demonstration Hardening (September 11, 2026)
+
+### Objective
+Eliminate the remaining gap between backend functionality and live cross-screen operator demonstrability. Establish a single-source-of-truth runtime model where scenario dispatch, event ingestion, risk signals, baseline deviations, topology relationships, trust scores, policy decisions, enforcement actions, case escalations, and SHA-256 audit records visibly and synchronously propagate across all 10 operations screens.
+
+### Key Architectural Changes
+1. **Universal Scenario Execution & Broadened Contract Validation (`backend/main.py`):**
+   - Expanded `ScenarioRequest.scenario` validator to accept all 11 scenario identifiers (`ATTACK_SURGE`, `FLAGSHIP`, `TRAVEL`, `FRAUD_RING`, `TAKEOVER`, `NORMAL_ACTIVITY`, `LEVERAGE_SPIKE`, `HIGH_VALUE`, `NEW_DEVICE`, `TWO_FACTOR_CHANGE`, `ABNORMAL_WITHDRAWAL`).
+   - Resolved 422 Unprocessable Entity error when operators or automated suites execute `ATTACK_SURGE` or related institutional attack patterns.
+2. **Baseline Topology Hydration & Real-time Graph Persistence (`backend/engine.py`):**
+   - Eliminated the isolated single-node graph artifact on initial launch: seeded authentic primary devices (`DEV-7842-PRIMARY`), residential IPs (`203.0.113.22`), and custodial wallets (`WALLET-7842-VAULT`) for flagship trader #7842 and initial accounts (#7001–#7004).
+   - Ensured baseline graph links are persisted to SQLite `GraphLinkModel` during `seed()` and restored upon `load_or_seed()`.
+   - Hardened `_link_entities()` with atomic SQLite persistence so newly discovered graph edges from live telemetry or scenario steps survive restarts.
+3. **Interactive Scenario Lab & Auto-Focus Synchronization (`frontend/src/components/ScenarioAttackReplay.tsx`, `frontend/src/App.tsx`):**
+   - Expanded Interactive Scenario Lab to support 8 first-class operational scenarios (`ATTACK_SURGE`, `FLAGSHIP`, `TRAVEL`, `FRAUD_RING`, `TAKEOVER`, `NORMAL_ACTIVITY`, `LEVERAGE_SPIKE`, `HIGH_VALUE`) with severity badges, category tags, and step-by-step dossiers.
+   - Connected `onSelectTrader` callback to top-level application state, auto-focusing the target trader (#7842, #7002, etc.) and synchronizing the 9-stage causal reasoning chain, live event feed, and decision dossiers upon scenario selection and step execution.
+4. **Forensic Evidence Drawer Topology Deep-Linking (`frontend/src/App.tsx`):**
+   - Bound `InteractiveGraph.onSelectNode` to trigger `EvidenceDrawer` with authentic node forensic inspection (Node ID, Entity Type, Connected Relationships, Clustering status, Risk Contribution).
+5. **Command Palette Quick Dispatches (`frontend/src/components/CommandPalette.tsx`):**
+   - Added instant shortcut triggers for `ATTACK_SURGE` (Critical Attack Surge), `NORMAL_ACTIVITY` (Baseline Routine), and `LEVERAGE_SPIKE` (Leverage Burst).
+6. **Institutional Responsive Layout System (`frontend/src/styles.css`):**
+   - Implemented responsive breakpoints across 1440px, 1280px, 1080px, 900px, and 768px viewports.
+   - Refactored KPI banners (`.exec-kpi-banner` from 4 columns to 2 columns at 1280px, 1 column at 768px).
+   - Enabled smooth horizontal touch scrolling with sticky headers for all high-density tabular data (`.table-container`).
+   - Hardened scenario replay timeline stepper and operational playback controls for tablet/mobile viewports.
+7. **Automated Test Suite Expansion (`backend/test_api.py`, `backend/test_single_event_propagation.py`):**
+   - Added `test_attack_surge_simulator_step_execution_and_propagation` in `test_single_event_propagation.py`.
+   - Added `test_simulator_attack_surge_endpoints` in `test_api.py`.
+   - Updated `test_topology_truth_distinction` to expect `>= 3` nodes and `>= 2` edges to account for authentic baseline topology hydration.
+
+### Test Results & Build Verification
+- **Backend Test Suite:** 78 passed out of 78 (`python -m pytest` with 100% pass rate across all 4 test suites: `test_api.py`, `test_auth.py`, `test_engine.py`, `test_single_event_propagation.py`).
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly with 0 errors.
+- **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.

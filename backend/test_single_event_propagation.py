@@ -159,3 +159,54 @@ def test_scenario_generation_produces_structured_traceable_events():
             assert "trader_id" in ev
             assert "event_type" in ev
             assert "source" in ev
+
+
+def test_attack_surge_simulator_step_execution_and_propagation():
+    """Verifies that ATTACK_SURGE executes cleanly step-by-step through engine ingestion,
+
+    progressively elevating signals, dropping trust, altering policy action to BLOCK,
+    creating an automatic investigation case, and committing to the SHA-256 audit ledger.
+    """
+    engine = NetraEngine()
+    engine.reset()
+
+    trader_id, events = engine.prepare_scenario("ATTACK_SURGE")
+    assert trader_id == "7842"
+    assert len(events) == 4
+
+    step_results = []
+    for ev in events:
+        res = engine.ingest(ev, actor="test-operator")
+        step_results.append(res)
+
+    # Step 1: NEW_DEVICE
+    assert step_results[0]["event"]["event_type"] == "NEW_DEVICE"
+    assert step_results[0]["decision"]["trust_score"] < 94.0
+
+    # Step 2: PASSWORD_CHANGE
+    assert step_results[1]["event"]["event_type"] == "PASSWORD_CHANGE"
+
+    # Step 3: LEVERAGE_CHANGE
+    assert step_results[2]["event"]["event_type"] == "LEVERAGE_CHANGE"
+
+    # Step 4: WITHDRAWAL - Trust drops to critical and policy enforces BLOCK
+    final_step = step_results[3]
+    assert final_step["event"]["event_type"] == "WITHDRAWAL"
+    assert final_step["decision"]["decision"] in {"RESTRICT", "BLOCK"}
+    assert final_step["trust_score"] < 25.0
+
+    # Case verification
+    active_cases = [c for c in engine.cases.values() if c["trader_id"] == "7842"]
+    assert len(active_cases) >= 1
+    assert active_cases[0]["trigger_event_id"] is not None
+
+    # Audit chain verification
+    audit_res = engine.verify_audit_chain()
+    assert audit_res["valid"] is True
+    assert audit_res["checked_records"] == len(engine.audit)
+
+    # Topology linkage verification
+    graph = engine.trader_graph("7842")
+    node_ids = {n["id"] for n in graph["nodes"]}
+    assert "DEV-SURGE-1" in node_ids
+    assert "WALLET-SURGE-DRAIN" in node_ids

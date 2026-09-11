@@ -5,7 +5,15 @@ import type { Decision, Event, Graph, Trader } from '../types'
 import { InteractiveGraph } from './InteractiveGraph'
 import { ReasoningEvidenceChain } from './ReasoningEvidenceChain'
 
-export type ScenarioCode = 'FLAGSHIP' | 'TRAVEL' | 'FRAUD_RING' | 'TAKEOVER'
+export type ScenarioCode =
+  | 'FLAGSHIP'
+  | 'ATTACK_SURGE'
+  | 'TRAVEL'
+  | 'FRAUD_RING'
+  | 'TAKEOVER'
+  | 'NORMAL_ACTIVITY'
+  | 'LEVERAGE_SPIKE'
+  | 'HIGH_VALUE'
 
 interface ScenarioStepDef {
   step: number
@@ -252,6 +260,188 @@ const SCENARIOS: Record<ScenarioCode, ScenarioDef> = {
       },
     ],
   },
+  ATTACK_SURGE: {
+    code: 'ATTACK_SURGE',
+    title: 'Compounding Anomaly Kill Chain Surge',
+    targetTraderId: '7842',
+    targetTraderName: 'Maya Chen',
+    severityTag: 'CRITICAL',
+    summary:
+      'Compounding intrusion sequence: Unrecognized Datacenter Hardware → Immediate Password Invalidation → 80× Leverage Spike → $35,000 Hostile Balance Exfiltration.',
+    thesis:
+      'NETRA correlates hardware novelty, credential modification velocity, and destabilizing leverage to enforce an immediate automated capital lockdown and case escalation before exfiltration.',
+    steps: [
+      {
+        step: 1,
+        event_type: 'NEW_DEVICE',
+        title: 'Datacenter Hardware Intrusion',
+        telemetry: 'Hardware DEV-SURGE-1 // Datacenter Subnet 198.18.0.21',
+        detail: 'First session detected from novel hardware routing through commercial datacenter hosting.',
+        baselineComparison: 'Known devices: [DEV-7842-PRIMARY]. Datacenter network type flags identity novelty.',
+        expectedOutcome: 'MONITOR // Identity Novelty Penalized (~84.0)',
+        severity: 'MONITOR',
+      },
+      {
+        step: 2,
+        event_type: 'PASSWORD_CHANGE',
+        title: 'Credential Invalidation Surge',
+        telemetry: 'Password Reset via Datacenter Subnet 198.18.0.21',
+        detail: 'Account password changed immediately following unauthorized hardware introduction.',
+        baselineComparison: 'Credential change from unverified hardware violates habitual security profile.',
+        expectedOutcome: 'VERIFY // Credential Anomaly Spike (~58.0)',
+        severity: 'HIGH',
+      },
+      {
+        step: 3,
+        event_type: 'LEVERAGE_CHANGE',
+        title: 'Destabilizing Leverage Escalation',
+        telemetry: '80× Maximum Margin Multiplier on SOL',
+        detail: 'Margin multiplied to 80×, exposing account equity to catastrophic liquidation risk.',
+        baselineComparison: '16× above habitual max leverage (5×). Extreme velocity and volatility deviation.',
+        expectedOutcome: 'RESTRICT // Margin Capability Constrained (~32.0)',
+        severity: 'HIGH',
+      },
+      {
+        step: 4,
+        event_type: 'WITHDRAWAL',
+        title: 'Hostile Balance Drain Exfiltration',
+        telemetry: '$35,000 USD to Destination WALLET-SURGE-DRAIN',
+        detail: 'Attempted rapid withdrawal to fresh destination wallet completes compounding attack sequence.',
+        baselineComparison: 'Kill chain completed. Continuous trust score collapses below critical lockdown threshold.',
+        expectedOutcome: 'BLOCK // Automated Capital Lockdown & Case Escalation (~16.0)',
+        severity: 'CRITICAL',
+      },
+    ],
+  },
+  NORMAL_ACTIVITY: {
+    code: 'NORMAL_ACTIVITY',
+    title: 'Routine Habitual Baseline Session',
+    targetTraderId: '7842',
+    targetTraderName: 'Maya Chen',
+    severityTag: 'NORMAL',
+    summary:
+      'Routine operational activity: Known domestic device, habitual $1,500 deposit, and conservative 3× margin trade.',
+    thesis:
+      'NETRA preserves high continuous trust across routine operations without unnecessary step-up friction or false positives.',
+    steps: [
+      {
+        step: 1,
+        event_type: 'LOGIN',
+        title: 'Authenticated Session',
+        telemetry: 'Mumbai, IN // Primary Hardware DEV-7842-PRIMARY',
+        detail: 'Operator authenticates from habitual residential ISP and registered primary device.',
+        baselineComparison: 'Matches established geographical and device profile. Zero deviation.',
+        expectedOutcome: 'ALLOW // Baseline Trust Preserved (~94.0)',
+        severity: 'NORMAL',
+      },
+      {
+        step: 2,
+        event_type: 'DEPOSIT',
+        title: 'Routine Account Funding',
+        telemetry: '$1,500 USD via Domestic Banking Rail',
+        detail: 'Deposit aligns comfortably with habitual funding baseline ($3,000 mean).',
+        baselineComparison: '$1,500 vs habitual baseline $3,000 (0.5×). Financial volume within 1 standard deviation.',
+        expectedOutcome: 'ALLOW // Continuous Trust Maintained (~93.5)',
+        severity: 'NORMAL',
+      },
+      {
+        step: 3,
+        event_type: 'TRADE',
+        title: 'Conservative Execution',
+        telemetry: '$1,000 BTC Execution // 3× Leverage',
+        detail: 'Trade volume and margin multiplier align strictly with historical trading behaviour.',
+        baselineComparison: 'Within standard deviation across all 10 risk dimensions. Zero friction.',
+        expectedOutcome: 'ALLOW // Optimal Execution State (~94.0)',
+        severity: 'NORMAL',
+      },
+    ],
+  },
+  LEVERAGE_SPIKE: {
+    code: 'LEVERAGE_SPIKE',
+    title: 'Speculative Leverage Anomaly',
+    targetTraderId: '7002',
+    targetTraderName: 'Liam Vance',
+    severityTag: 'HIGH',
+    summary:
+      'Speculative volatility surge: Traveler logs in from US, multiplies leverage to 75× on volatile SOL, and executes large position.',
+    thesis:
+      'NETRA flags out-of-band leverage escalation before market volatility causes catastrophic liquidation losses.',
+    steps: [
+      {
+        step: 1,
+        event_type: 'LOGIN',
+        title: 'US Travel Session',
+        telemetry: 'New York, US (198.51.100.12) // Device DEV-7002-TRAVEL',
+        detail: 'User authenticates from known travel laptop during verified business travel.',
+        baselineComparison: 'Known secondary device. Geographical transition registered.',
+        expectedOutcome: 'ALLOW // Travel Context Recognized (~90.0)',
+        severity: 'MONITOR',
+      },
+      {
+        step: 2,
+        event_type: 'LEVERAGE_CHANGE',
+        title: 'Margin Multiplier Surge',
+        telemetry: '75× Maximum Margin on SOL',
+        detail: 'Trader multiplies margin to 75× on volatile asset, far exceeding account baseline.',
+        baselineComparison: '15× above habitual leverage (5×). Risk profile heavily distorted.',
+        expectedOutcome: 'VERIFY // Margin Restriction Enforced (~54.0)',
+        severity: 'HIGH',
+      },
+      {
+        step: 3,
+        event_type: 'TRADE',
+        title: 'High-Margin Altcoin Position',
+        telemetry: '$35,000 SOL Speculative Margin Position',
+        detail: 'High nominal exposure with 75× multiplier triggers automated risk mitigation.',
+        baselineComparison: 'Capital exposure exceeds portfolio risk threshold. Step-up required.',
+        expectedOutcome: 'RESTRICT // Execution Gated by Policy (~36.0)',
+        severity: 'HIGH',
+      },
+    ],
+  },
+  HIGH_VALUE: {
+    code: 'HIGH_VALUE',
+    title: 'Institutional Whale Deployment',
+    targetTraderId: '7003',
+    targetTraderName: 'Elena Rostova',
+    severityTag: 'NORMAL',
+    summary:
+      'Institutional scale liquidity: $150,000 wire deposit followed by $120,000 conservative BTC execution.',
+    thesis:
+      'NETRA avoids false positives on large nominal sums by referencing verified institutional tier baselines.',
+    steps: [
+      {
+        step: 1,
+        event_type: 'LOGIN',
+        title: 'Institutional Terminal Login',
+        telemetry: 'London, GB (198.51.100.33) // DEV-7003-INSTITUTIONAL',
+        detail: 'Trader connects from dedicated institutional corporate terminal in London.',
+        baselineComparison: 'Matches registered institutional network ASN and hardware key.',
+        expectedOutcome: 'ALLOW // Institutional Baseline Confirmed (~96.0)',
+        severity: 'NORMAL',
+      },
+      {
+        step: 2,
+        event_type: 'DEPOSIT',
+        title: 'High-Value Corporate Wire',
+        telemetry: '$150,000 USD Institutional Liquidity Wire',
+        detail: 'Substantial liquidity injection proportional to institutional account tier ($50,000 baseline).',
+        baselineComparison: 'Institutional tier authorized for 6-figure liquidity injections.',
+        expectedOutcome: 'ALLOW // Corporate Liquidity Approved (~95.0)',
+        severity: 'NORMAL',
+      },
+      {
+        step: 3,
+        event_type: 'TRADE',
+        title: 'Institutional Execution',
+        telemetry: '$120,000 BTC Execution // 2× Conservative Leverage',
+        detail: 'Large-scale spot execution with low margin multiplier maintains healthy liquidity buffer.',
+        baselineComparison: 'Conservative leverage confirms disciplined institutional capital deployment.',
+        expectedOutcome: 'ALLOW // Full Institutional Continuity (~94.5)',
+        severity: 'NORMAL',
+      },
+    ],
+  },
 }
 
 interface ScenarioAttackReplayProps {
@@ -263,6 +453,7 @@ interface ScenarioAttackReplayProps {
   graph?: Graph
   onInspectEvidence?: (decision?: Decision, event?: Event, trader?: Trader) => void
   onInspectTrader?: (trader: Trader) => void
+  onSelectTrader?: (traderId: string) => void
   onNavigate?: (view: any) => void
   onStepUpVerify?: (traderId: string) => void
   onCreateCase?: (traderId: string, reason: string) => void
@@ -280,6 +471,7 @@ export function ScenarioAttackReplay({
   graph,
   onInspectEvidence,
   onInspectTrader,
+  onSelectTrader,
   onNavigate,
   onStepUpVerify,
   onCreateCase,
@@ -319,7 +511,7 @@ export function ScenarioAttackReplay({
     }
   }, [])
 
-  // Switch scenario handler: reset stepper cleanly
+  // Switch scenario handler: reset stepper cleanly and focus target trader
   const handleSelectScenario = async (code: ScenarioCode) => {
     if (isPlaying) {
       setIsPlaying(false)
@@ -329,6 +521,9 @@ export function ScenarioAttackReplay({
     setCurrentStepIndex(0)
     setStepHistory([])
     setReplayNotice(`LOADED SCENARIO: ${SCENARIOS[code].title}`)
+    if (onSelectTrader) {
+      onSelectTrader(SCENARIOS[code].targetTraderId)
+    }
     try {
       await api.send('POST', '/simulator/reset')
       await onRefreshAll()
@@ -358,6 +553,11 @@ export function ScenarioAttackReplay({
       setReplayNotice(
         `STEP ${nextIndex}/${totalSteps}: ${res.event?.event_type || 'Event'} processed // Trust: ${res.trust_score ?? res.decision?.trust_score ?? '—'}`
       )
+
+      if (res.event?.trader_id && onSelectTrader) {
+        onSelectTrader(res.event.trader_id)
+      }
+
       await onRefreshAll()
 
       if (res.complete || nextIndex >= totalSteps) {
@@ -372,7 +572,7 @@ export function ScenarioAttackReplay({
     } finally {
       setIsStepping(false)
     }
-  }, [currentStepIndex, totalSteps, selectedScenario, onRefreshAll])
+  }, [currentStepIndex, totalSteps, selectedScenario, onRefreshAll, onSelectTrader])
 
   // Step Backward (safely replays N-1 steps from clean reset)
   const handlePrevStep = async () => {
@@ -497,15 +697,31 @@ export function ScenarioAttackReplay({
       {/* 1. SCENARIO SELECTOR RIBBON */}
       <div className="scenario-selector-ribbon">
         <div className="scenario-tab-group">
-          {(['FLAGSHIP', 'TRAVEL', 'FRAUD_RING', 'TAKEOVER'] as ScenarioCode[]).map(code => {
+          {(Object.keys(SCENARIOS) as ScenarioCode[]).map(code => {
             const sc = SCENARIOS[code]
+            const icon =
+              code === 'FLAGSHIP'
+                ? '⚡'
+                : code === 'ATTACK_SURGE'
+                ? '💥'
+                : code === 'TRAVEL'
+                ? '✈'
+                : code === 'FRAUD_RING'
+                ? '🕸'
+                : code === 'TAKEOVER'
+                ? '🔑'
+                : code === 'NORMAL_ACTIVITY'
+                ? '🛡'
+                : code === 'LEVERAGE_SPIKE'
+                ? '📈'
+                : '🐋'
             return (
               <button
                 key={code}
                 className={`scenario-tab-btn ${selectedScenario === code ? 'active' : ''}`}
                 onClick={() => handleSelectScenario(code)}
               >
-                <span>{code === 'FLAGSHIP' ? '⚡' : code === 'TRAVEL' ? '✈' : code === 'FRAUD_RING' ? '🕸' : '🔑'}</span>
+                <span>{icon}</span>
                 <span>{sc.title}</span>
                 <span className={`priority-pill priority-${sc.severityTag.toLowerCase()}`}>
                   {sc.severityTag}

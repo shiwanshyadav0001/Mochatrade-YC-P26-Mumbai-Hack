@@ -60,9 +60,12 @@ export function CommandPalette({
       { id: 'nav-analytics', title: 'ANALYTICS // Risk Engine Metrics & Evaluation Latency', category: 'NAVIGATION', action: () => onNavigate('ANALYTICS') },
 
       { id: 'act-flagship', title: 'EXECUTE // Flagship Suspicious Withdrawal Surge (#7842)', category: 'SCENARIOS', action: () => onRunScenario('FLAGSHIP', 'FAST'), badge: 'ATTACK' },
+      { id: 'act-surge', title: 'EXECUTE // Compounding Anomaly Attack Surge (#7842)', category: 'SCENARIOS', action: () => onRunScenario('ATTACK_SURGE', 'FAST'), badge: 'CRITICAL' },
       { id: 'act-travel', title: 'EXECUTE // Legitimate Cross-Border Travel (#7842)', category: 'SCENARIOS', action: () => onRunScenario('TRAVEL', 'NORMAL') },
-      { id: 'act-ring', title: 'EXECUTE // Collusive Multi-Account Fraud Ring (#7102-#7105)', category: 'SCENARIOS', action: () => onRunScenario('FRAUD_RING', 'NORMAL') },
+      { id: 'act-ring', title: 'EXECUTE // Collusive Multi-Account Fraud Ring (#7102-#7105)', category: 'SCENARIOS', action: () => onRunScenario('FRAUD_RING', 'NORMAL'), badge: 'SYNDICATE' },
       { id: 'act-takeover', title: 'EXECUTE // Hostile Account Takeover Surge (#7842)', category: 'SCENARIOS', action: () => onRunScenario('TAKEOVER', 'NORMAL') },
+      { id: 'act-normal', title: 'EXECUTE // Routine Habitual Baseline Activity (#7842)', category: 'SCENARIOS', action: () => onRunScenario('NORMAL_ACTIVITY', 'NORMAL'), badge: 'BASELINE' },
+      { id: 'act-leverage', title: 'EXECUTE // Speculative Leverage Anomaly (#7002)', category: 'SCENARIOS', action: () => onRunScenario('LEVERAGE_SPIKE', 'NORMAL') },
       { id: 'act-reset', title: 'SYSTEM // Re-seed SQLite Persistent Baseline', category: 'ACTIONS', action: onResetDemo, badge: 'RESET' },
     ]
 
