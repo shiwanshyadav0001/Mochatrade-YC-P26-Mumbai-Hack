@@ -37,6 +37,15 @@ class AdaptiveTraderProfile:
     sensitive_actions_per_hour: float = 1.0
     trusted_sample_count: int = 0
 
+    @property
+    def baseline_confidence(self) -> str:
+        """Evaluates explicit baseline confidence: LOW (< 5 samples), MEDIUM (5-14 samples), HIGH (>= 15 samples)."""
+        if self.trusted_sample_count < 5:
+            return "LOW"
+        if self.trusted_sample_count < 15:
+            return "MEDIUM"
+        return "HIGH"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "trader_id": self.trader_id,
@@ -55,6 +64,7 @@ class AdaptiveTraderProfile:
             "transaction_velocity_per_hour": self.transaction_velocity_per_hour,
             "sensitive_actions_per_hour": self.sensitive_actions_per_hour,
             "trusted_sample_count": self.trusted_sample_count,
+            "baseline_confidence": self.baseline_confidence,
         }
 
     def learn_device(self, dev: str) -> None:

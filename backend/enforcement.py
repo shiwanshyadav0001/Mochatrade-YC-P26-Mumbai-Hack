@@ -4,6 +4,16 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
+SESSION_RISK_STATES = {
+    "SESSION_NORMAL",
+    "SESSION_MONITORED",
+    "SESSION_SUSPICIOUS",
+    "SESSION_VERIFICATION_REQUIRED",
+    "SESSION_RESTRICTED",
+    "SESSION_TERMINATED",
+}
+
+
 @dataclass
 class EnforcementResult:
     trader_id: str
@@ -14,6 +24,7 @@ class EnforcementResult:
     reason: str
     trust_score: float
     policy_version: str
+    session_risk_state: str = "SESSION_NORMAL"
     requires_step_up: bool = False
     evidence: list[dict[str, Any]] = field(default_factory=list)
     gateway_notice: str = "NETRA Simulated Action Enforcement Gateway (Integration-Ready. No live broker/exchange connection)."
@@ -23,7 +34,7 @@ class EnforcementResult:
 
 
 class ActionEnforcementService:
-    """Evaluates and enforces simulated platform actions against live trust standing, contextual risk, and active security policies."""
+    """Evaluates and enforces simulated platform actions against live trust standing, contextual risk, active security policies, and session state."""
 
     READ_ONLY_ACTIONS = {"PROFILE_VIEW", "BALANCE_QUERY", "ORDER_HISTORY_VIEW"}
     HIGH_SENSITIVITY_ACTIONS = {"WITHDRAWAL", "CHANGE_PASSWORD", "CHANGE_2FA", "CHANGE_API_KEY", "NEW_WALLET"}
@@ -45,7 +56,25 @@ class ActionEnforcementService:
         sensitivity = sens_map.get(action, 50)
         policy_ver = policy.get("version", "2026.09-v2.0")
 
+        ctx = context or {}
+        session_risk_state = ctx.get("session_risk_state") or trader.get("session_risk_state", "SESSION_NORMAL")
         evidence: list[dict[str, Any]] = []
+
+        # 0. If session is explicitly TERMINATED -> ALL actions blocked
+        if session_risk_state == "SESSION_TERMINATED":
+            return EnforcementResult(
+                trader_id=trader_id,
+                action=action,
+                decision="BLOCK",
+                allowed=False,
+                status="BLOCKED",
+                reason="Session has been terminated due to high-confidence security compromise. Full re-authentication required.",
+                trust_score=trust,
+                policy_version=policy_ver,
+                session_risk_state=session_risk_state,
+                requires_step_up=False,
+                evidence=[{"id": "SESSION_REVOCATION", "type": "SESSION", "label": "Session Terminated"}],
+            )
 
         # Check for open critical cases on trader
         has_escalated_case = False
@@ -68,6 +97,7 @@ class ActionEnforcementService:
                     reason="Account restricted due to active critical risk investigation.",
                     trust_score=trust,
                     policy_version=policy_ver,
+                    session_risk_state=session_risk_state,
                     evidence=evidence,
                 )
             return EnforcementResult(
@@ -79,6 +109,23 @@ class ActionEnforcementService:
                 reason="Read-only action allowed.",
                 trust_score=trust,
                 policy_version=policy_ver,
+                session_risk_state=session_risk_state,
+            )
+
+        # 1b. If session is RESTRICTED: sensitive actions restricted, read-only permitted
+        if session_risk_state == "SESSION_RESTRICTED" and (action in cls.HIGH_SENSITIVITY_ACTIONS or sensitivity >= 70):
+            return EnforcementResult(
+                trader_id=trader_id,
+                action=action,
+                decision="RESTRICT",
+                allowed=False,
+                status="RESTRICTED",
+                reason=f"Action '{action}' restricted: Session is in restricted standing pending step-up verification.",
+                trust_score=trust,
+                policy_version=policy_ver,
+                session_risk_state=session_risk_state,
+                requires_step_up=True,
+                evidence=evidence,
             )
 
         # 2. Critical trust (< 15.0 or < restrict band with high sensitivity) -> BLOCK

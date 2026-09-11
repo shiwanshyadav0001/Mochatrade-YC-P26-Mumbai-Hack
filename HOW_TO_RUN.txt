@@ -1,0 +1,23 @@
+﻿=== NETRA: CONTINUOUS TRADER TRUST INTELLIGENCE ===
+=== HOW TO RUN IN VS CODE (2 TERMINALS) ===
+
+TERMINAL 1 (Backend):
+1. cd backend
+2. python -m pip install -r requirements.txt
+3. python -m uvicorn main:app --reload --port 8000
+
+-> Backend API will be live at: http://localhost:8000/docs
+
+
+TERMINAL 2 (Frontend):
+1. cd frontend
+2. npm install
+3. npm run dev
+
+-> Open browser at: http://localhost:5173
+
+
+=============================================
+DOCKER (Alternative single command):
+docker compose up --build
+-> Open browser at: http://localhost:8080
