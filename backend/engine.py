@@ -281,7 +281,7 @@ class NetraEngine:
                     for l in self.graph_links
                     if l["source"] in {f"trader:{tid}", f"TRADER-{tid}"} or l["target"] in {f"trader:{tid}", f"TRADER-{tid}"}
                 }
-                degree = len(connected_t) or 1
+                degree = len(connected_t) or 3
                 for ev in evs:
                     v, _ = BehavioralAnomalyService.extract_feature_vector(ev, prof, None, graph_degree=degree)
                     trusted_vectors.append(v)
@@ -379,7 +379,7 @@ class NetraEngine:
                     asset=self.rng.choice(["BTC", "ETH", "SOL"]),
                     leverage=self.rng.choice([1, 2, 3, 5]),
                     device_id=trader["baseline"]["known_devices"][0],
-                    ip_address="198.51.100.1" if trader_id == "7001" else f"198.51.100.{index % 200}",
+                    ip_address="203.0.113.22" if trader_id == "7842" else ("198.51.100.1" if trader_id == "7001" else f"198.51.100.{index % 200}"),
                     country="IN",
                     city="Mumbai",
                     source="seed",
@@ -750,6 +750,12 @@ class NetraEngine:
                     else ["DEV-7001-A"] if trader_id == "7001"
                     else ["DEV-7002-TRAVEL"] if trader_id == "7002"
                     else [f"DEV-{int(trader_id) % 300:03d}"]
+                ),
+                "known_ips": (
+                    ["203.0.113.22"] if trader_id == "7842"
+                    else ["198.51.100.1"] if trader_id == "7001"
+                    else ["203.0.113.77"] if trader_id == "7002"
+                    else [f"198.51.100.{tid_int % 200}"]
                 ),
                 "normal_login_hours": [8, 9, 10, 18, 19, 20],
                 "known_wallets": ["WALLET-7842-TRUSTED"] if trader_id == "7842" else [],
@@ -1233,7 +1239,14 @@ class NetraEngine:
             ("WALLET", event.wallet_address, "WITHDREW_TO"),
         ]:
             if value:
-                target = f"{prefix}-{value}"
+                if prefix == "DEVICE":
+                    target = value if (value.startswith("DEV-") or value.startswith("DEVICE-")) else f"DEV-{value}"
+                elif prefix == "IP":
+                    target = value if (value.startswith("IP-") or value.startswith("SUBNET-")) else f"IP-{value}"
+                elif prefix == "WALLET":
+                    target = value if value.startswith("WALLET-") else f"WALLET-{value}"
+                else:
+                    target = f"{prefix}-{value}"
                 link = {"source": source, "target": target, "type": relation, "evidence": [event.event_id]}
                 if link not in active_links:
                     active_links.append(link)
@@ -1297,7 +1310,7 @@ class NetraEngine:
         self.trader_anomaly_results[event.trader_id] = anomaly_res
 
         # ML Evidence Integration with Anti-Double-Counting
-        if anomaly_res.status == "TRAINED" and anomaly_res.anomaly_score >= 55.0:
+        if anomaly_res.status == "TRAINED" and anomaly_res.anomaly_score >= 60.0 and len(anomaly_res.top_deviations) > 0:
             ml_severity = clamp(40.0 + (anomaly_res.anomaly_score - 55.0) * 0.88, 40.0, 80.0)
             signals.append(
                 RiskSignal(
@@ -1672,10 +1685,12 @@ class NetraEngine:
         sess.setdefault("anomalies", [])
         sess["anomalies"].extend([a.to_dict() for a in anomalies])
 
-        if sess.get("revoked", False):
+        if sess.get("revoked", False) or sess.get("risk_state") == "SESSION_TERMINATED" or trader.get("session_risk_state") == "SESSION_TERMINATED":
             sess_state = "SESSION_TERMINATED"
+            decision = "BLOCK"
         elif decision == "BLOCK" or (new_trust < 15.0 and sess.get("failed_verifications", 0) >= 2):
             sess_state = "SESSION_TERMINATED"
+            decision = "BLOCK"
         elif decision == "RESTRICT" or (new_trust < 25.0 and action in {"WITHDRAWAL", "CHANGE_2FA", "CHANGE_PASSWORD"}):
             sess_state = "SESSION_RESTRICTED"
         elif decision == "VERIFY" or (new_trust < 45.0 and action in {"WITHDRAWAL", "LEVERAGED_TRADE"}):
@@ -2219,14 +2234,13 @@ class NetraEngine:
             }, actor=actor)
             case_id = new_c["case_id"]
 
-        audit_rec = self._new_audit_record(
+        audit_rec = self._audit(
             actor,
             "SESSION_TERMINATED",
             f"SESSION-{session_id}",
             reason,
             {"session_id": session_id, "trader_id": trader_id, "case_id": case_id},
         )
-        self.audit.append(audit_rec)
 
         return {
             "session_id": session_id,
@@ -2267,7 +2281,7 @@ class NetraEngine:
             if trader.get("active_session_id") in self.sessions:
                 self.sessions[trader["active_session_id"]]["risk_state"] = "SESSION_MONITORED"
 
-        audit_rec = self._new_audit_record(
+        audit_rec = self._audit(
             operator,
             "DECISION_OVERRIDDEN",
             decision_id,
@@ -2280,7 +2294,6 @@ class NetraEngine:
                 "reason": reason,
             },
         )
-        self.audit.append(audit_rec)
         return {
             "decision_id": decision_id,
             "trader_id": trader_id,
@@ -2569,6 +2582,7 @@ class NetraEngine:
             "timestamp": iso_now(),
             "actor": actor,
             "event": event,
+            "action": event,
             "subject": subject,
             "reason": reason,
             "policy_version": self.policy["version"],
@@ -2594,7 +2608,7 @@ class NetraEngine:
             )
         )
 
-    def _audit(self, actor: str, event: str, subject: str, reason: str, details: dict[str, Any]) -> None:
+    def _audit(self, actor: str, event: str, subject: str, reason: str, details: dict[str, Any]) -> dict[str, Any]:
         rec = self._new_audit_record(actor, event, subject, reason, details)
         try:
             with get_db() as db:
@@ -2611,6 +2625,7 @@ class NetraEngine:
             )
             raise
         self.audit.append(rec)
+        return rec
 
     def verify_audit_chain(self) -> dict[str, Any]:
         """Cryptographically verifies the SHA-256 audit ledger."""
@@ -2635,6 +2650,7 @@ class NetraEngine:
         """Isolates scenario execution to prevent previous scenario residue from contaminating runs."""
         self.traders[trader_id] = self._new_trader(trader_id, trust, baseline_deposit)
         self.transitions[trader_id] = []
+        self.sessions = {sid: s for sid, s in self.sessions.items() if s.get("trader_id") != trader_id}
         # Preserve historical baseline seed events, purge previous scenario events
         self.events = [e for e in self.events if e["trader_id"] != trader_id or str(e.get("source", "")).startswith("seed")]
         self.decisions = [d for d in self.decisions if d["trader_id"] != trader_id or str(d.get("source", "")).startswith("seed")]

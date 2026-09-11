@@ -622,3 +622,36 @@ Provide instant, bidirectional operational navigation between every stage of the
    - Bound `activeEvent` to an instant `VIEW EVENT ⚡` action in the case cockpit header, navigating directly to the exact telemetry record in the Live Telemetry Monitor.
    - Bound `activeDecision` and `relatedAudits` to an instant `AUDIT VAULT 🔍` action in the case cockpit header, navigating directly to the cryptographic proof ledger.
    - Exposed trigger event ID in the Incident Trigger & Root Cause card.
+
+---
+
+## Final Hackathon Round 1 (Checkpoint 1.3): Contextual Anomaly Session Verification & Operational Hardening (September 12, 2026)
+
+### Objective
+Complete the continuous anomaly, session risk state, step-up verification, repeated-failure escalation, session termination, decision override, and counterfactual simulation layers, ensuring 100% synchronization across database persistence, in-memory engine state, cryptographic audit provenance, and operational UI.
+
+### Key Architectural & Functional Improvements
+1. **Session Risk State Coherence (`enforcement.py`, `engine.py`):**
+   - Standardized `SESSION_RISK_STATES` as an institutional metadata dictionary with all 6 states (`SESSION_NORMAL`, `SESSION_MONITORED`, `SESSION_SUSPICIOUS`, `SESSION_VERIFICATION_REQUIRED`, `SESSION_RESTRICTED`, `SESSION_TERMINATED`).
+   - Integrated session termination enforcement: when a session is revoked or terminated, subsequent protected operations are strictly `BLOCK`ed at the enforcement gateway.
+2. **Contextual Step-Up Verification & Re-Evaluation (`engine.py`):**
+   - Step-up verification restores trust evidence-grounded without blind resets.
+   - Successful verification re-evaluates residual wallet and topology risks (`VERIFY` → `MONITOR` / `ALLOW` or graduated `RESTRICT` if residual risks remain high).
+   - Failed verification applies bounded penalty, tracks failure count, and automatically terminates sessions upon repeated failure under critical risk.
+3. **Cryptographic Audit Provenance Synchronization (`engine.py`, `models.py`):**
+   - Unified `_audit()` helper so that `terminate_session()`, `override_decision()`, `create_case()`, and `ingest()` persist all audit entries to SQLite WAL database and in-memory ledger simultaneously with unbroken SHA-256 hash chaining.
+   - Added backward-compatible `action` and `event` fields to audit record dictionaries and models.
+4. **Behavioral ML Anomaly & Baseline Integration (`anomaly_model.py`, `engine.py`):**
+   - Structured 12-dimensional feature extraction for Scikit-Learn Isolation Forest.
+   - Normalized graph degree baseline calculation against standard multi-entity topology.
+   - Seeded known IP/device configurations for baseline consistency.
+
+### Comprehensive Test & Verification Results
+- **Backend Test Suite:** 95 passed out of 95 tests across 5 test suites (`python -m pytest` with 100% pass rate in ~33s):
+  - `test_anomaly_session_verification.py`: 15 passed
+  - `test_api.py`: 23 passed
+  - `test_auth.py`: 9 passed
+  - `test_engine.py`: 43 passed
+  - `test_single_event_propagation.py`: 5 passed
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed in 189ms with 0 errors.
+- **Git diff whitespace & formatting:** `git diff --check` passed with 0 warnings.

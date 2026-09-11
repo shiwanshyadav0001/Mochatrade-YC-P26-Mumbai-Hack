@@ -5,13 +5,14 @@ from typing import Any
 
 
 SESSION_RISK_STATES = {
-    "SESSION_NORMAL",
-    "SESSION_MONITORED",
-    "SESSION_SUSPICIOUS",
-    "SESSION_VERIFICATION_REQUIRED",
-    "SESSION_RESTRICTED",
-    "SESSION_TERMINATED",
+    "SESSION_NORMAL": "Normal baseline conforming session",
+    "SESSION_MONITORED": "Monitored session with minor anomalies or velocity shifts",
+    "SESSION_SUSPICIOUS": "Suspicious session with correlated contextual risk signals",
+    "SESSION_VERIFICATION_REQUIRED": "Step-up verification challenge required before sensitive operations",
+    "SESSION_RESTRICTED": "Restricted session due to elevated risk or verification challenge",
+    "SESSION_TERMINATED": "Terminated session due to critical compromise or repeated verification failures",
 }
+
 
 
 @dataclass
