@@ -434,3 +434,34 @@ Eliminate the remaining gap between backend functionality and live cross-screen 
 - **Backend Test Suite:** 78 passed out of 78 (`python -m pytest` with 100% pass rate across all 4 test suites: `test_api.py`, `test_auth.py`, `test_engine.py`, `test_single_event_propagation.py`).
 - **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly with 0 errors.
 - **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
+
+---
+
+## Milestone 4.1: Functional Surface Completion, Truthful Telemetry & Cross-Screen Operational Integration (September 11, 2026)
+
+### Objective
+Eliminate all remaining disconnected or decorative placeholders across NETRA's 10 operational surfaces. Establish genuine data-driven truth across all screens, remove hardcoded fake fallbacks, purge all legacy/hackathon branding from the runtime experience, and provide deep-linkable forensic investigative workflows connecting traders, events, risk incidents, cases, topology nodes, and cryptographic audit records.
+
+### Key Architectural Changes
+1. **Repository-Wide Identity Purge & Runtime Ownership:**
+   - Completed comprehensive audit across `frontend/`, `backend/`, `index.html`, package metadata, and UI components.
+   - Verified zero occurrences of legacy/hackathon branding in runtime UI components, dialogs, titles, or active telemetry feeds.
+   - Segregated historical project references strictly to explicitly labeled archival sections in documentation.
+2. **Elimination of Mock/Fake Fallback Telemetry:**
+   - `App.tsx` (Overview & Mission Banner): Removed hardcoded fallbacks (`events.length || 248`, `cases.filter(...).length || 1`, `selected.baseline.countries || 'US, UK, DE'`).
+   - Converted the `HIGHEST-PRIORITY THREAT` mission card into a truthful, state-driven indicator reporting `NONE` / `ALL TRUSTED` / `FLEET SECURE` when the fleet is uncompromised, and dynamically rendering the real critical threat when an attack is underway.
+   - `LiveTelemetryMonitor.tsx`: Removed hardcoded defaults (`traders.length || 106`, `deposit_amount || 2000`, `leverage || 5`, `devices || 1`, `countries || 'US'`), replacing them with truthful calculations from backend domain state.
+   - `TrustTrajectoryHero.tsx`: Dynamically derived baseline envelope metrics (devices, leverage, deposit volume, velocity, and normal circadian hours) directly from `trader.baseline`.
+   - `ForensicCaseWorkbench.tsx`: Replaced hardcoded incident delta fallbacks (`$18,400`, `100x`, `194.26.29.112`, `DEV-UNRECOGNIZED-998`) with authentic event metrics and honest non-monetary / standard labels.
+3. **First-Class Trader Behavioral Profile in Forensic Evidence Drawer (`EvidenceDrawer.tsx`):**
+   - Added dedicated `TRADER BEHAVIORAL PROFILE & BASELINE` card in `FORENSICS` tab, displaying ML anomaly scores, adaptive baseline parameters, registered hardware/wallets, and direct operational actions when inspecting traders.
+   - Guarded network/hardware table so that inspecting a trader entity displays meaningful behavioral intelligence rather than empty placeholder rows.
+4. **Cross-Screen Operational Integration & Action Workflows:**
+   - Added direct operational workflow shortcuts in `Traders` view: `LIVE MONITOR →`, `TOPOLOGY GRAPH →`, and `RESET BEHAVIORAL BASELINE`.
+   - In `Risk Events` view, linked each incident row inspection directly to the full underlying `Event`, `Decision`, `Trader`, and `Audit Record`.
+   - Preserved authoritative 94.0 starting trust for flagship trader 7842 after baseline seeding.
+
+### Test Results & Build Verification
+- **Backend Test Suite:** 78 passed out of 78 (`python -m pytest` with 100% pass rate in 21.41s across all 4 test suites: `test_api.py`, `test_auth.py`, `test_engine.py`, `test_single_event_propagation.py`).
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly with 0 errors.
+- **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.

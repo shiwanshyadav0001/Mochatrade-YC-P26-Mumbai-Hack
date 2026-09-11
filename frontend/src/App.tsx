@@ -730,12 +730,12 @@ export default function App() {
   }, [decisions, selectedId, selected])
 
   const populationStats = useMemo(() => {
-    const total = traders.length || 106
+    const total = traders.length
     const trusted = traders.filter(t => t.trust_score >= 70).length
     const monitored = traders.filter(t => t.trust_score >= 45 && t.trust_score < 70).length
     const critical = traders.filter(t => t.trust_score < 45).length
     const sorted = [...traders].sort((a, b) => a.trust_score - b.trust_score)
-    const highestThreat = sorted[0]
+    const highestThreat = sorted.find(t => t.trust_score < 70) || null
     return { total, trusted, monitored, critical, highestThreat }
   }, [traders])
 
@@ -970,22 +970,24 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className={`exec-kpi-card ${populationStats.critical > 0 ? 'kpi-threat-critical' : 'kpi-accent-amber'}`}>
+                <div className={`exec-kpi-card ${populationStats.critical > 0 ? 'kpi-threat-critical' : populationStats.highestThreat ? 'kpi-accent-amber' : 'kpi-accent-emerald'}`}>
                   <div className="kpi-head">
                     <span className="kpi-label">HIGHEST-PRIORITY THREAT</span>
-                    <span className="status-pill critical" style={{ fontSize: 8 }}>PRIORITY 01</span>
+                    <span className={`status-pill ${populationStats.highestThreat ? 'critical' : 'normal'}`} style={{ fontSize: 8 }}>
+                      {populationStats.highestThreat ? 'PRIORITY 01' : 'FLEET SECURE'}
+                    </span>
                   </div>
                   <div className="kpi-metric-row">
-                    <span className="kpi-value" style={{ color: 'var(--state-critical)' }}>
-                      #{populationStats.highestThreat?.trader_id ?? '8201'}
+                    <span className="kpi-value" style={{ color: populationStats.highestThreat ? 'var(--state-critical)' : 'var(--state-normal)' }}>
+                      {populationStats.highestThreat ? `#${populationStats.highestThreat.trader_id}` : 'NONE'}
                     </span>
                     <span className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                      {populationStats.highestThreat ? `${Math.round(populationStats.highestThreat.trust_score)}/100` : '0/100'}
+                      {populationStats.highestThreat ? `${Math.round(populationStats.highestThreat.trust_score)}/100` : 'ALL TRUSTED'}
                     </span>
                   </div>
                   <div className="kpi-sub-meta">
-                    <span className="mono" style={{ fontSize: 9, color: 'var(--state-critical)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>
-                      {populationStats.highestThreat?.last_decision || 'BLOCK'} // {populationStats.highestThreat?.name || 'High Risk Entity'}
+                    <span className="mono" style={{ fontSize: 9, color: populationStats.highestThreat ? 'var(--state-critical)' : 'var(--state-normal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>
+                      {populationStats.highestThreat ? `${populationStats.highestThreat.last_decision || 'FLAGGED'} // ${populationStats.highestThreat.name}` : 'Zero degraded fleet identities'}
                     </span>
                     {populationStats.highestThreat && (
                       <button
@@ -1009,7 +1011,7 @@ export default function App() {
                     <span className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>AVG LATENCY</span>
                   </div>
                   <div className="kpi-sub-meta mono">
-                    <span>EVENTS: {events.length || 248}</span>
+                    <span>EVENTS: {events.length}</span>
                     <span style={{ color: 'var(--state-normal)' }}>SSE STREAM ACTIVE</span>
                   </div>
                 </div>
@@ -1020,7 +1022,7 @@ export default function App() {
                     <span className="status-pill elevated" style={{ fontSize: 8 }}>STRICT v2.4</span>
                   </div>
                   <div className="kpi-metric-row">
-                    <span className="kpi-value">{cases.filter(c => c.status === 'OPEN').length || analytics?.summary.open_cases || 1}</span>
+                    <span className="kpi-value">{cases.filter(c => c.status === 'OPEN').length}</span>
                     <span className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>OPEN CASES</span>
                   </div>
                   <div className="kpi-sub-meta mono">
@@ -1114,7 +1116,7 @@ export default function App() {
                         </div>
                         <div style={{ padding: '6px 8px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)' }}>
                           <span style={{ color: 'var(--text-dim)', display: 'block' }}>NETWORK ASN:</span>
-                          <strong>{selected?.baseline?.countries?.join(', ') || 'US, UK, DE'}</strong>
+                          <strong>{selected?.baseline?.countries?.join(', ') || '—'}</strong>
                         </div>
                         <div style={{ padding: '6px 8px', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)' }}>
                           <span style={{ color: 'var(--text-dim)', display: 'block' }}>SHARED CLUSTERS:</span>
@@ -1441,6 +1443,32 @@ export default function App() {
                     </table>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 9.5, padding: '4px 6px', color: 'var(--accent-cyan)' }}
+                          onClick={() => {
+                            if (selected) {
+                              setSelectedId(selected.trader_id)
+                              setView('LIVE MONITOR')
+                            }
+                          }}
+                        >
+                          LIVE MONITOR →
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 9.5, padding: '4px 6px', color: 'var(--accent-cobalt)' }}
+                          onClick={() => {
+                            if (selected) {
+                              setSelectedId(selected.trader_id)
+                              setView('RELATIONSHIP GRAPH')
+                            }
+                          }}
+                        >
+                          TOPOLOGY GRAPH →
+                        </button>
+                      </div>
                       <button
                         className="btn btn-primary"
                         onClick={() => selected && stepUpVerify(selected.trader_id)}
@@ -1449,6 +1477,14 @@ export default function App() {
                       </button>
                       <button className="btn btn-secondary" onClick={createCase}>
                         INITIALIZE FORMAL INVESTIGATION CASE
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 9.5, color: 'var(--state-elevated)' }}
+                        onClick={() => selected && resetBaseline(selected.trader_id)}
+                        title="Reset behavioral rolling baseline to initial bootstrap distributions"
+                      >
+                        RESET BEHAVIORAL BASELINE
                       </button>
                     </div>
                   </div>
@@ -1666,14 +1702,22 @@ export default function App() {
                                         style={{ padding: '2px 6px', fontSize: 10 }}
                                         onClick={() => {
                                           setSelectedId(re.trader_id)
-                                          inspectEvent({
-                                            event_id: re.event_id || re.risk_id || 'EV-RISK',
-                                            timestamp: re.timestamp,
-                                            trader_id: re.trader_id,
-                                            event_type: re.event_type,
-                                            source: re.source || 'risk-events',
-                                            risk_relevance: `${sev}`,
+                                          const matchedEvent = events.find(e => e.event_id === re.event_id)
+                                          const matchedDecision = decisions.find(d => d.event_id === re.event_id || d.trader_id === re.trader_id)
+                                          const matchedTrader = traders.find(t => t.trader_id === re.trader_id)
+                                          setDrawerData({
+                                            event: matchedEvent || {
+                                              event_id: re.event_id || re.risk_id || 'EV-RISK',
+                                              timestamp: re.timestamp,
+                                              trader_id: re.trader_id,
+                                              event_type: re.event_type,
+                                              source: re.source || 'risk-events',
+                                              risk_relevance: `${sev}`,
+                                            },
+                                            decision: matchedDecision,
+                                            trader: matchedTrader,
                                           })
+                                          setDrawerOpen(true)
                                         }}
                                       >
                                         INSPECT

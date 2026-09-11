@@ -130,10 +130,13 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
 
   // Baseline extraction
   const baseline = activeTrader?.baseline
-  const normDeposit = baseline?.deposit_amount ? `$${baseline.deposit_amount.toLocaleString()}` : '$1,250'
-  const normLeverage = baseline?.leverage ? `${baseline.leverage}x` : '10x'
-  const normCountries = baseline?.countries?.length ? baseline.countries.join(', ') : 'SG, MY'
-  const normDevices = baseline?.known_devices?.length ? `${baseline.known_devices.length} registered` : '2 registered'
+  const normDeposit = baseline?.deposit_amount ? `$${baseline.deposit_amount.toLocaleString()}` : '—'
+  const normLeverage = baseline?.leverage ? `${baseline.leverage}x` : '—'
+  const normCountries = baseline?.countries?.length ? baseline.countries.join(', ') : '—'
+  const normDevices = baseline?.known_devices?.length ? `${baseline.known_devices.length} registered` : '1 registered'
+  const normHours = baseline?.normal_login_hours?.length
+    ? `UTC ${String(Math.min(...baseline.normal_login_hours)).padStart(2, '0')}:00 – ${String(Math.max(...baseline.normal_login_hours)).padStart(2, '0')}:00`
+    : 'UTC 08:00 – 20:00'
 
   return (
     <div className="forensic-workbench-container">
@@ -387,7 +390,7 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
                       </div>
                       <div className="delta-row">
                         <span className="delta-label">NORMAL HOURS:</span>
-                        <span className="delta-value mono">08:00 – 22:00 UTC</span>
+                        <span className="delta-value mono">{normHours}</span>
                       </div>
                     </div>
                   </div>
@@ -402,31 +405,31 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
                       <div className="delta-row">
                         <span className="delta-label">EVENT TYPE:</span>
                         <span className="delta-value mono" style={{ color: '#fff' }}>
-                          {activeEvent?.event_type || 'WITHDRAWAL'}
+                          {activeEvent?.event_type || activeCase?.reason?.split(' ')[0] || 'SECURITY_INCIDENT'}
                         </span>
                       </div>
                       <div className="delta-row">
                         <span className="delta-label">AMOUNT:</span>
-                        <span className="delta-value mono" style={{ color: 'var(--accent-crimson)', fontWeight: 700 }}>
-                          {activeEvent?.amount ? `$${activeEvent.amount.toLocaleString()}` : '$18,400'} (DEVIATION)
+                        <span className="delta-value mono" style={{ color: activeEvent?.amount ? 'var(--accent-crimson)' : 'var(--text-secondary)', fontWeight: activeEvent?.amount ? 700 : 400 }}>
+                          {activeEvent?.amount ? `$${activeEvent.amount.toLocaleString()} (DEVIATION)` : 'N/A (NON-MONETARY)'}
                         </span>
                       </div>
                       <div className="delta-row">
                         <span className="delta-label">LEVERAGE:</span>
-                        <span className="delta-value mono" style={{ color: 'var(--accent-crimson)' }}>
-                          {activeEvent?.leverage ? `${activeEvent.leverage}x` : '100x (HIGH)'}
+                        <span className="delta-value mono" style={{ color: activeEvent?.leverage ? 'var(--accent-crimson)' : 'var(--text-secondary)' }}>
+                          {activeEvent?.leverage ? `${activeEvent.leverage}x` : 'STANDARD'}
                         </span>
                       </div>
                       <div className="delta-row">
                         <span className="delta-label">IP / LOCATION:</span>
                         <span className="delta-value mono">
-                          {activeEvent?.ip_address || '194.26.29.112'} ({activeEvent?.country || 'NL'} Datacenter)
+                          {activeEvent?.ip_address ? `${activeEvent.ip_address} (${activeEvent.city ? `${activeEvent.city}, ` : ''}${activeEvent.country || ''}${activeEvent.network_type ? ` ${activeEvent.network_type.toUpperCase()}` : ''})` : 'ORIGIN IP UNMODIFIED'}
                         </span>
                       </div>
                       <div className="delta-row">
                         <span className="delta-label">HARDWARE / DEVICE:</span>
-                        <span className="delta-value mono" style={{ color: 'var(--accent-amber)' }}>
-                          {activeEvent?.device_id || 'DEV-UNRECOGNIZED-998'} (NEW DEVICE)
+                        <span className="delta-value mono" style={{ color: activeEvent?.device_id ? 'var(--accent-amber)' : 'var(--text-secondary)' }}>
+                          {activeEvent?.device_id || 'KNOWN REGISTERED HARDWARE'}
                         </span>
                       </div>
                     </div>

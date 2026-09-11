@@ -39,6 +39,34 @@ Real-time SSE Stream (`/api/stream`) → Institutional React/TypeScript Operatio
 
 ---
 
+## Current Implementation & Verification Status
+
+> **Status Terminology:**
+> - `[✓]` Implemented and verified by automated test suites
+> - `[~]` Partially implemented / external integration-ready
+> - `[SIM]` Simulation / demo logic active by design
+> - `[ ]` Planned / missing in current milestone
+> - `[!]` Broken / failing contract
+
+| Capability Area | Status | Operational Detail |
+| :--- | :---: | :--- |
+| **Real-Time Event Ingestion & Normalization** | `[✓]` | Pydantic v2 schemas, 15 validated event types, sub-millisecond dispatch |
+| **Adaptive Rolling Baselines & Poisoning Guard** | `[✓]` | Individualized $\mu \pm 3\sigma$ bounds, zero-poisoning learning filter |
+| **Temporal Sliding Windows & Kill Chains** | `[✓]` | 5m/15m/1h/24h/7d rolling velocity counters and multi-step sequence detection |
+| **Multi-Hop Topology Graph Intelligence** | `[✓]` | Multi-hop BFS traversal, shared hardware/IP/wallet cluster detection |
+| **Unsupervised ML Behavioral Anomaly Engine** | `[✓]` | Scikit-Learn Isolation Forest with 12D feature vectors and score normalization |
+| **Continuous Trust State Trajectory (0–100)** | `[✓]` | Organic evidence-based trust scoring without synthetic bypasses |
+| **Graduated Action Enforcement Gateway** | `[✓]` | Proportional gating (`ALLOW` → `MONITOR` → `VERIFY` → `RESTRICT` → `BLOCK`) |
+| **Tamper-Evident SHA-256 Audit Vault** | `[✓]` | Cryptographic hash chaining with live pre-image verification |
+| **Forensic Case Workbench & Triage** | `[✓]` | Automated case escalation, chronological notes log, dossier exports |
+| **Cross-Screen Deterministic Scenario Lab** | `[✓]` | 8 interactive scenarios (`ATTACK_SURGE`, `FLAGSHIP`, etc.) with fleet auto-focus |
+| **Multi-Role RBAC Authentication** | `[✓]` | JWT HMAC-SHA256 bearer tokens, PBKDF2 hashing, 4-role permission enforcement |
+| **Action Enforcement Webhooks** | `[~]` | Local gateway layer operational; outbound HTTP webhooks integration-ready |
+| **Topology Graph Layout Physics** | `[SIM]` | Polar-trigonometric deterministic layout active; dynamic D3 force simulation planned |
+| **Scale-Out Graph & Relational Backends** | `[ ]` | SQLite WAL mode active in production runtime; Neo4j/Postgres blueprints container-ready |
+
+---
+
 ## Project Structure
 
 ```text

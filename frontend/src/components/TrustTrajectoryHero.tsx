@@ -383,23 +383,27 @@ export function TrustTrajectoryHero({ trader }: TrustTrajectoryHeroProps) {
           <div className="envelope-grid mono">
             <div className="envelope-param">
               <span>KNOWN DEVICES:</span>
-              <strong>{trader?.baseline?.known_devices?.length || 2} registered</strong>
+              <strong>{trader?.baseline?.known_devices?.length ? `${trader.baseline.known_devices.length} registered` : '1 registered'}</strong>
             </div>
             <div className="envelope-param">
               <span>MAX BASELINE LEV:</span>
-              <strong>{trader?.baseline?.leverage || 5}× margin</strong>
+              <strong>{trader?.baseline?.leverage ? `${trader.baseline.leverage}× margin` : '—'}</strong>
             </div>
             <div className="envelope-param">
               <span>HABITUAL VOLUME:</span>
-              <strong>{money(trader?.baseline?.deposit_amount || 2500)} avg</strong>
+              <strong>{trader?.baseline?.deposit_amount != null ? `${money(trader.baseline.deposit_amount)} avg` : '—'}</strong>
             </div>
             <div className="envelope-param">
               <span>HOURS PROFILE:</span>
-              <strong>UTC 08:00 – 18:00</strong>
+              <strong>
+                {trader?.baseline?.normal_login_hours?.length
+                  ? `UTC ${String(Math.min(...trader.baseline.normal_login_hours)).padStart(2, '0')}:00 – ${String(Math.max(...trader.baseline.normal_login_hours)).padStart(2, '0')}:00`
+                  : 'UTC 08:00 – 20:00'}
+              </strong>
             </div>
             <div className="envelope-param">
               <span>NORMAL VELOCITY:</span>
-              <strong>{trader?.baseline?.transaction_velocity_per_hour || 1.2} events/hr</strong>
+              <strong>{trader?.baseline?.transaction_velocity_per_hour != null ? `${trader.baseline.transaction_velocity_per_hour} events/hr` : '—'}</strong>
             </div>
           </div>
         </div>

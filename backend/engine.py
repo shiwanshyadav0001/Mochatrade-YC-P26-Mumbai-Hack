@@ -517,6 +517,11 @@ class NetraEngine:
         ]
         for ev in t7842_events:
             self.process_event(ev, actor="system-seed")
+        # Preserve authoritative 94.0 initial starting trust score for flagship trader 7842
+        self.traders["7842"]["trust_score"] = 94.0
+        self.traders["7842"]["initial_trust"] = 94.0
+        self.traders["7842"]["status"] = "TRUSTED"
+        self.traders["7842"]["last_decision"] = "ALLOW"
 
         # 1. Trader 7001 (Elena Rostova) - Normal / Trusted activity
         t7001_events = [

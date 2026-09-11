@@ -132,6 +132,65 @@ export function EvidenceDrawer({
                 </div>
               )}
 
+              {/* Trader Profile Card (when inspecting trader directly) */}
+              {trader && !decision && !event && (
+                <div className="drawer-card">
+                  <div className="drawer-card-title">TRADER BEHAVIORAL PROFILE & BASELINE</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{trader.name}</div>
+                      <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                        TRADER #{trader.trader_id} · {trader.segment} · {trader.event_count ?? 0} EVENTS
+                      </div>
+                    </div>
+                    <div className="trust-display" style={{ textAlign: 'right' }}>
+                      <div className="trust-score-row">
+                        <strong style={{ fontSize: 22 }}>{Math.round(trader.trust_score)}</strong>
+                        <span>/100</span>
+                      </div>
+                      <span className="trust-label">{trader.status}</span>
+                    </div>
+                  </div>
+
+                  <table className="data-table" style={{ fontSize: 10, marginBottom: 10 }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ color: 'var(--text-muted)', width: 140 }}>NORMAL DEPOSIT</td>
+                        <td className="mono"><b>{trader.baseline?.deposit_amount ? `$${trader.baseline.deposit_amount.toLocaleString()}` : '—'}</b></td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'var(--text-muted)' }}>NORMAL LEVERAGE</td>
+                        <td className="mono">{trader.baseline?.leverage ? `${trader.baseline.leverage}×` : '—'}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'var(--text-muted)' }}>BASELINE COUNTRIES</td>
+                        <td className="mono">{trader.baseline?.countries?.join(', ') || '—'}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'var(--text-muted)' }}>REGISTERED DEVICES</td>
+                        <td className="mono">{trader.baseline?.known_devices?.join(', ') || 'None recorded'}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'var(--text-muted)' }}>REGISTERED WALLETS</td>
+                        <td className="mono">{trader.baseline?.known_wallets?.join(', ') || 'None recorded'}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'var(--text-muted)' }}>ANOMALY SCORE (ML)</td>
+                        <td className="mono">
+                          {trader.anomaly_score !== null && trader.anomaly_score !== undefined
+                            ? `${Math.round(trader.anomaly_score)}/100`
+                            : 'Normal (In-Distribution)'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'var(--text-muted)' }}>TOPOLOGY RELATIONSHIP</td>
+                        <td style={{ fontSize: 9.5 }}>{trader.relationship_summary || 'Isolated trader node'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               {decision && (
                 <div className="drawer-card">
                   <div className="drawer-card-title">NETRA EVALUATION OUTCOME</div>
@@ -174,53 +233,55 @@ export function EvidenceDrawer({
               )}
 
               {/* Network & Device Table */}
-              <div className="drawer-card">
-                <div className="drawer-card-title">INFRASTRUCTURE & CRYPTOGRAPHIC CONTEXT</div>
-                <table className="data-table" style={{ fontSize: 10 }}>
-                  <tbody>
-                    <tr>
-                      <td style={{ color: 'var(--text-muted)', width: 140 }}>IP ADDRESS</td>
-                      <td className="mono ip-address">
-                        <b>{event?.ip_address || (entity?.type === 'IP' ? entity.id.replace('IP-', '') : 'N/A')}</b>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style={{ color: 'var(--text-muted)' }}>NETWORK CATEGORY</td>
-                      <td>
-                        <span className={`status-pill ${event?.network_type === 'datacenter' ? 'critical' : (event?.ip_address ? 'normal' : 'elevated')}`}>
-                          {event?.network_type ? event.network_type.toUpperCase() : (event?.ip_address ? 'RESIDENTIAL' : 'N/A')}
-                        </span>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style={{ color: 'var(--text-muted)' }}>GEO LOCATION</td>
-                      <td>{event?.city ? `${event.city}, ${event.country || ''}` : (event?.country || 'N/A')}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ color: 'var(--text-muted)' }}>DEVICE FINGERPRINT</td>
-                      <td className="mono">{event?.device_id || (entity?.type === 'DEVICE' ? entity.id : 'N/A')}</td>
-                    </tr>
-                    {event?.wallet_address && (
+              {(event || entity) && (
+                <div className="drawer-card">
+                  <div className="drawer-card-title">INFRASTRUCTURE & CRYPTOGRAPHIC CONTEXT</div>
+                  <table className="data-table" style={{ fontSize: 10 }}>
+                    <tbody>
                       <tr>
-                        <td style={{ color: 'var(--text-muted)' }}>DESTINATION WALLET</td>
-                        <td className="mono wallet-address">{event.wallet_address}</td>
+                        <td style={{ color: 'var(--text-muted)', width: 140 }}>IP ADDRESS</td>
+                        <td className="mono ip-address">
+                          <b>{event?.ip_address || (entity?.type === 'IP' ? entity.id.replace('IP-', '') : 'N/A')}</b>
+                        </td>
                       </tr>
-                    )}
-                    {event?.amount !== undefined && (
                       <tr>
-                        <td style={{ color: 'var(--text-muted)' }}>TRANSACTION AMOUNT</td>
-                        <td className="mono"><b>${event.amount.toLocaleString()} {event.currency || 'USD'}</b></td>
+                        <td style={{ color: 'var(--text-muted)' }}>NETWORK CATEGORY</td>
+                        <td>
+                          <span className={`status-pill ${event?.network_type === 'datacenter' ? 'critical' : (event?.ip_address ? 'normal' : 'elevated')}`}>
+                            {event?.network_type ? event.network_type.toUpperCase() : (event?.ip_address ? 'RESIDENTIAL' : 'N/A')}
+                          </span>
+                        </td>
                       </tr>
-                    )}
-                    {event?.leverage !== undefined && (
                       <tr>
-                        <td style={{ color: 'var(--text-muted)' }}>APPLIED LEVERAGE</td>
-                        <td className="mono">{event.leverage}×</td>
+                        <td style={{ color: 'var(--text-muted)' }}>GEO LOCATION</td>
+                        <td>{event?.city ? `${event.city}, ${event.country || ''}` : (event?.country || 'N/A')}</td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      <tr>
+                        <td style={{ color: 'var(--text-muted)' }}>DEVICE FINGERPRINT</td>
+                        <td className="mono">{event?.device_id || (entity?.type === 'DEVICE' ? entity.id : 'N/A')}</td>
+                      </tr>
+                      {event?.wallet_address && (
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>DESTINATION WALLET</td>
+                          <td className="mono wallet-address">{event.wallet_address}</td>
+                        </tr>
+                      )}
+                      {event?.amount !== undefined && (
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>TRANSACTION AMOUNT</td>
+                          <td className="mono"><b>${event.amount.toLocaleString()} {event.currency || 'USD'}</b></td>
+                        </tr>
+                      )}
+                      {event?.leverage !== undefined && (
+                        <tr>
+                          <td style={{ color: 'var(--text-muted)' }}>APPLIED LEVERAGE</td>
+                          <td className="mono">{event.leverage}×</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* Triggered Rules */}
               {decision?.triggered_rules && decision.triggered_rules.length > 0 && (

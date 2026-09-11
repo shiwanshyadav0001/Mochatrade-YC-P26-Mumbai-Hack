@@ -295,7 +295,7 @@ export function LiveTelemetryMonitor({
 
   // Fleet Population Metrics
   const populationStats = useMemo(() => {
-    const total = traders.length || 106
+    const total = traders.length
     const trusted = traders.filter(t => t.trust_score >= 70).length
     const monitored = traders.filter(t => t.trust_score >= 45 && t.trust_score < 70).length
     const critical = traders.filter(t => t.trust_score < 45).length
@@ -652,7 +652,7 @@ export function LiveTelemetryMonitor({
               <div style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: 12 }}>
                 <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>BASELINE NORMS</span>
                 <div className="mono" style={{ fontSize: 10, color: 'var(--text-primary)' }}>
-                  MAX DEP: {money(selected.baseline?.deposit_amount || 2000)} │ LEV: {selected.baseline?.leverage || 5}× │ DEVS: {selected.baseline?.known_devices?.length || 1} │ GEO: {selected.baseline?.countries?.join(', ') || 'US'}
+                  MAX DEP: {selected.baseline?.deposit_amount != null ? money(selected.baseline.deposit_amount) : '—'} │ LEV: {selected.baseline?.leverage ? `${selected.baseline.leverage}×` : '—'} │ DEVS: {selected.baseline?.known_devices?.length ?? 0} │ GEO: {selected.baseline?.countries?.join(', ') || '—'}
                 </div>
               </div>
             </div>
@@ -1223,7 +1223,7 @@ export function LiveTelemetryMonitor({
                   </div>
                   {focusedTrader?.baseline && (
                     <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 3 }}>
-                      HABITUAL MAX DEP: {money(focusedTrader.baseline.deposit_amount || 2500)} │ LEV NORM: ≤{focusedTrader.baseline.leverage || 5}× │ KNOWN HW: {focusedTrader.baseline.known_devices?.length ?? 1} │ GEO: {focusedTrader.baseline.countries?.join(', ') || 'US'}
+                      HABITUAL MAX DEP: {focusedTrader.baseline.deposit_amount != null ? money(focusedTrader.baseline.deposit_amount) : '—'} │ LEV NORM: ≤{focusedTrader.baseline.leverage ? `${focusedTrader.baseline.leverage}×` : '—'} │ KNOWN HW: {focusedTrader.baseline.known_devices?.length ?? 0} │ GEO: {focusedTrader.baseline.countries?.join(', ') || '—'}
                     </div>
                   )}
                 </div>
