@@ -140,6 +140,7 @@ export default function App() {
   const [caseNoteInputs, setCaseNoteInputs] = useState<Record<string, string>>({})
   const [auditFilterSubject, setAuditFilterSubject] = useState<string>('')
   const [auditFocusId, setAuditFocusId] = useState<string>('')
+  const [targetEventId, setTargetEventId] = useState<string | null>(null)
 
   const handleNavigateToAudit = useCallback((auditId?: string, subject?: string) => {
     if (auditId) setAuditFocusId(auditId)
@@ -151,6 +152,9 @@ export default function App() {
     if (traderId) {
       setSelectedId(traderId)
       selectedIdRef.current = traderId
+    }
+    if (eventId) {
+      setTargetEventId(eventId)
     }
     setView('LIVE MONITOR')
   }, [])
@@ -1218,6 +1222,7 @@ export default function App() {
               evaluatingAction={evaluatingAction}
               actionEvalResult={actionEvalResult}
               onNavigateToAudit={handleNavigateToAudit}
+              targetEventId={targetEventId}
             />
           )}
 
@@ -1636,23 +1641,35 @@ export default function App() {
                                     </div>
                                   </td>
                                   <td>
-                                    <button
-                                      className="btn btn-secondary"
-                                      style={{ padding: '2px 6px', fontSize: 10 }}
-                                      onClick={() => {
-                                        setSelectedId(re.trader_id)
-                                        inspectEvent({
-                                          event_id: re.event_id || re.risk_id || 'EV-RISK',
-                                          timestamp: re.timestamp,
-                                          trader_id: re.trader_id,
-                                          event_type: re.event_type,
-                                          source: re.source || 'risk-events',
-                                          risk_relevance: `${sev}`,
-                                        })
-                                      }}
-                                    >
-                                      INSPECT
-                                    </button>
+                                    <div style={{ display: 'flex', gap: 4 }}>
+                                      <button
+                                        className="btn btn-secondary"
+                                        style={{ padding: '2px 6px', fontSize: 10 }}
+                                        onClick={() => {
+                                          setSelectedId(re.trader_id)
+                                          inspectEvent({
+                                            event_id: re.event_id || re.risk_id || 'EV-RISK',
+                                            timestamp: re.timestamp,
+                                            trader_id: re.trader_id,
+                                            event_type: re.event_type,
+                                            source: re.source || 'risk-events',
+                                            risk_relevance: `${sev}`,
+                                          })
+                                        }}
+                                      >
+                                        INSPECT
+                                      </button>
+                                      {re.event_id && (
+                                        <button
+                                          className="btn btn-secondary"
+                                          style={{ padding: '2px 6px', fontSize: 10, color: 'var(--accent-cyan)' }}
+                                          onClick={() => handleNavigateToEvent(re.event_id, re.trader_id)}
+                                          title="Trace this exact risk event in Live Telemetry Monitor"
+                                        >
+                                          TRACE →
+                                        </button>
+                                      )}
+                                    </div>
                                   </td>
                                 </tr>
                               )
@@ -1880,10 +1897,8 @@ export default function App() {
                 setDrawerData({ decision: d, event: ev, trader: t })
                 setDrawerOpen(true)
               }}
-              onNavigateToAudit={subjectId => {
-                if (subjectId) setAuditFilterSubject(subjectId)
-                setView('AUDIT')
-              }}
+              onNavigateToAudit={handleNavigateToAudit}
+              onNavigateToEvent={handleNavigateToEvent}
             />
           )}
 
@@ -1921,6 +1936,8 @@ export default function App() {
               onStepUpVerify={stepUpVerify}
               onCreateCase={createCase}
               onRefreshAll={refreshAll}
+              onNavigateToAudit={handleNavigateToAudit}
+              onNavigateToEvent={handleNavigateToEvent}
             />
           )}
 

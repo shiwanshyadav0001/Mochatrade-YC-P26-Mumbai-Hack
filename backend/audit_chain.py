@@ -100,3 +100,27 @@ def verify_audit_chain(audit_list: list[dict[str, Any]]) -> dict[str, Any]:
         "first_invalid_record": None,
         "reason": None,
     }
+
+
+def verify_single_audit_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Verifies the cryptographic integrity of an individual audit record.
+
+    Validates that recalculating sha256(canonicalize_record(record) + "|" + previous_hash)
+    matches the stored current_hash.
+    """
+    prev_hash = record.get("previous_hash") or GENESIS_HASH
+    stored_hash = record.get("current_hash") or ""
+    canonical_payload = canonicalize_record(record)
+    expected_hash = compute_audit_hash(record, prev_hash)
+    is_valid = bool(stored_hash and stored_hash == expected_hash)
+    return {
+        "valid": is_valid,
+        "audit_id": record.get("audit_id"),
+        "stored_hash": stored_hash,
+        "recalculated_hash": expected_hash,
+        "previous_hash": prev_hash,
+        "canonical_payload": canonical_payload,
+        "reason": None if is_valid else (
+            f"Hash mismatch: stored '{stored_hash}' vs recalculated '{expected_hash}'"
+        ),
+    }

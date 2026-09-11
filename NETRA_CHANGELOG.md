@@ -329,12 +329,19 @@ Establish the foundational forensic provenance layer connecting every live opera
      - `07 POLICY`: Proportional policy tier (`ALLOW`, `MONITOR`, `VERIFY`, `RESTRICT`, `BLOCK`) with policy version.
      - `08 ACTION`: Operational enforcement action description and gate status.
      - `09 AUDIT`: Cryptographic audit record ID, SHA-256 hash preview, verification status, and direct vault jump.
-5. **Backend API Enhancements (`backend/main.py`):**
-   - Extended `GET /api/decisions` to support optional query parameter filtering by `event_id` and `trader_id`.
+5. **Single Audit Record Cryptographic Verification API (`backend/main.py`, `backend/audit_chain.py`):**
+   - Added `verify_single_audit_record(record)` helper recalculating canonical UTF-8 pre-image SHA-256 and validating against `current_hash`.
+   - Added endpoint `GET /api/audit/{audit_id}` returning `{ record, valid, stored_hash, recalculated_hash, previous_hash, canonical_payload }`.
+6. **Inline Cryptographic Proof Inspector (`frontend/src/components/LiveTelemetryMonitor.tsx`):**
+   - Added `VERIFY PROOF 🔍` button in Step 06 of the live operational loop.
+   - Added an authentic inline cryptographic inspector modal displaying the deterministic canonical UTF-8 JSON pre-image, previous hash link, stored hash, and live recalculated hash verification.
+7. **360° Forensic Deep-Linking Across All Console Surfaces (`frontend/src/App.tsx`, `frontend/src/components/ForensicCaseWorkbench.tsx`, `frontend/src/components/ScenarioAttackReplay.tsx`):**
+   - Synchronized `targetEventId` prop to ensure clicking any deep link (`TRACE →`, `LOCATE IN LIVE TELEMETRY →`, `JUMP TO EVENT →`) directly selects and highlights that specific event in Live Telemetry Monitor.
+   - Added `TRACE →` action button to each row of the Contextual Risk Incidents table.
+   - Added `LOCATE IN LIVE TELEMETRY →` and deep-linkable audit anchors in `ForensicCaseWorkbench`.
+   - Added `AUDIT VAULT →` and `LIVE MONITOR →` deep-link buttons to the active step dossier in `ScenarioAttackReplay`.
 
 ### Test Results & Build Verification
-- **Backend Test Suite:** 70 passed out of 70 (`python -m pytest` in 18.76s, including 2 new Milestone 4.1 provenance and database persistence roundtrip tests).
-- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 121ms with 0 errors.
+- **Backend Test Suite:** 71 passed out of 71 (`python -m pytest` with 100% pass rate, covering API endpoints, authentication, engine rules, and cryptographic provenance verification).
+- **Frontend Production Build:** `npm run build` (`tsc -b && vite build`) passed cleanly in 170ms with 0 errors.
 - **Git diff formatting:** `git diff --check` passed cleanly with 0 whitespace warnings.
-
-

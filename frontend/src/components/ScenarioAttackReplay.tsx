@@ -267,6 +267,8 @@ interface ScenarioAttackReplayProps {
   onStepUpVerify?: (traderId: string) => void
   onCreateCase?: (traderId: string, reason: string) => void
   onRefreshAll: () => Promise<void>
+  onNavigateToAudit?: (auditId?: string, subject?: string) => void
+  onNavigateToEvent?: (eventId: string, traderId: string) => void
 }
 
 export function ScenarioAttackReplay({
@@ -282,6 +284,8 @@ export function ScenarioAttackReplay({
   onStepUpVerify,
   onCreateCase,
   onRefreshAll,
+  onNavigateToAudit,
+  onNavigateToEvent,
 }: ScenarioAttackReplayProps) {
   const [selectedScenario, setSelectedScenario] = useState<ScenarioCode>('FLAGSHIP')
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0)
@@ -717,17 +721,41 @@ export function ScenarioAttackReplay({
               </div>
 
               {currentStepIndex > 0 && (
-                <button
-                  className="btn btn-secondary"
-                  style={{ padding: '3px 8px', fontSize: 10 }}
-                  onClick={() => {
-                    const matchedEvent = activeStepResult?.event || events.find(e => e.trader_id === activeScenario.targetTraderId)
-                    const matchedDecision = activeStepResult?.decision || latestDecision
-                    onInspectEvidence?.(matchedDecision, matchedEvent, scenarioTrader)
-                  }}
-                >
-                  INSPECT FORENSICS →
-                </button>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ padding: '3px 8px', fontSize: 10 }}
+                    onClick={() => {
+                      const matchedEvent = activeStepResult?.event || events.find(e => e.trader_id === activeScenario.targetTraderId)
+                      const matchedDecision = activeStepResult?.decision || latestDecision
+                      onInspectEvidence?.(matchedDecision, matchedEvent, scenarioTrader)
+                    }}
+                  >
+                    INSPECT FORENSICS →
+                  </button>
+
+                  {(activeStepResult?.decision?.audit_id || activeStepResult?.event?.audit_id) && onNavigateToAudit && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '3px 8px', fontSize: 10, color: 'var(--accent-cyan)' }}
+                      onClick={() => onNavigateToAudit(activeStepResult?.decision?.audit_id || activeStepResult?.event?.audit_id, activeScenario.targetTraderId)}
+                      title="Inspect exact audit record in Cryptographic Audit Vault"
+                    >
+                      AUDIT VAULT →
+                    </button>
+                  )}
+
+                  {activeStepResult?.event?.event_id && onNavigateToEvent && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '3px 8px', fontSize: 10, color: 'var(--accent-amber)' }}
+                      onClick={() => onNavigateToEvent(activeStepResult.event.event_id, activeScenario.targetTraderId)}
+                      title="Inspect event in Live Telemetry Monitor"
+                    >
+                      LIVE MONITOR →
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -788,6 +816,7 @@ export function ScenarioAttackReplay({
                 onInspectEvidence?.(matchedDecision, matchedEvent, scenarioTrader)
               }}
               onOpenTopology={() => onNavigate?.('RELATIONSHIP GRAPH')}
+              onNavigateToAudit={onNavigateToAudit}
             />
           </div>
         </div>

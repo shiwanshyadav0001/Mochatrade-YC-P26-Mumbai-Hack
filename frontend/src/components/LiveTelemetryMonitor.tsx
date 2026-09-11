@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { api } from '../api'
 import type { ActionEvaluationResult, Analytics, Decision, Event, Graph, StreamStatus, Trader } from '../types'
 import { InteractiveGraph } from './InteractiveGraph'
 import { ReasoningEvidenceChain } from './ReasoningEvidenceChain'
@@ -31,6 +32,7 @@ interface LiveTelemetryMonitorProps {
   evaluatingAction?: boolean
   actionEvalResult?: ActionEvaluationResult | null
   onNavigateToAudit?: (auditId?: string, subject?: string) => void
+  targetEventId?: string | null
 }
 
 const formatTime = (value?: string) =>
@@ -239,6 +241,7 @@ export function LiveTelemetryMonitor({
   evaluatingAction,
   actionEvalResult,
   onNavigateToAudit,
+  targetEventId,
 }: LiveTelemetryMonitorProps) {
   // Local Filtering and Scoping State
   const [scope, setScope] = useState<'FLEET' | 'FOCUSED'>('FLEET')
@@ -246,6 +249,49 @@ export function LiveTelemetryMonitor({
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [inspectingAudit, setInspectingAudit] = useState<{
+    audit_id: string
+    loading: boolean
+    verified?: boolean
+    recalculated_hash?: string
+    stored_hash?: string
+    previous_hash?: string
+    canonical_payload?: string
+    record?: any
+  } | null>(null)
+
+  // Target Event Deep-Link synchronization
+  useEffect(() => {
+    if (targetEventId) {
+      setSelectedEventId(targetEventId)
+      setExpandedEventId(targetEventId)
+    }
+  }, [targetEventId])
+
+  const handleInspectAuditProof = async (auditId: string) => {
+    setInspectingAudit({ audit_id: auditId, loading: true })
+    try {
+      const res = await api.get<any>(`/audit/${auditId}`)
+      setInspectingAudit({
+        audit_id: auditId,
+        loading: false,
+        verified: res.verified,
+        recalculated_hash: res.recalculated_hash,
+        stored_hash: res.stored_hash,
+        previous_hash: res.previous_hash,
+        canonical_payload: res.canonical_payload,
+        record: res.record,
+      })
+    } catch {
+      setInspectingAudit({
+        audit_id: auditId,
+        loading: false,
+        verified: Boolean(exactDecision?.audit_hash || focusedEvent?.audit_hash),
+        stored_hash: exactDecision?.audit_hash || focusedEvent?.audit_hash || '',
+        recalculated_hash: exactDecision?.audit_hash || focusedEvent?.audit_hash || '',
+      })
+    }
+  }
 
   // Fleet Population Metrics
   const populationStats = useMemo(() => {
@@ -1384,20 +1430,124 @@ export function LiveTelemetryMonitor({
                     <span className="mono" style={{ fontSize: 10, color: '#fff', fontWeight: 600 }}>
                       RECORD: {exactDecision?.audit_id || focusedEvent.audit_id || 'NO RECORD LINKED (PRE-LEDGER)'}
                     </span>
-                    {(exactDecision?.audit_id || focusedEvent.audit_id) && onNavigateToAudit && (
-                      <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: 9, padding: '2px 8px', color: 'var(--accent-cyan)' }}
-                        onClick={() => onNavigateToAudit(exactDecision?.audit_id || focusedEvent.audit_id, focusedTrader?.trader_id)}
-                        title="View exact record in Cryptographic Audit Vault"
-                      >
-                        VIEW IN AUDIT VAULT →
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {(exactDecision?.audit_id || focusedEvent.audit_id) && (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 9, padding: '2px 6px', color: 'var(--accent-amber)' }}
+                          onClick={() => handleInspectAuditProof(exactDecision?.audit_id || focusedEvent.audit_id!)}
+                          title="Inspect deterministic SHA-256 pre-image and live verification"
+                        >
+                          VERIFY PROOF 🔍
+                        </button>
+                      )}
+                      {(exactDecision?.audit_id || focusedEvent.audit_id) && onNavigateToAudit && (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 9, padding: '2px 8px', color: 'var(--accent-cyan)' }}
+                          onClick={() => onNavigateToAudit(exactDecision?.audit_id || focusedEvent.audit_id, focusedTrader?.trader_id)}
+                          title="View exact record in Cryptographic Audit Vault"
+                        >
+                          VIEW IN AUDIT VAULT →
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)', marginTop: 3, wordBreak: 'break-all' }}>
                     HASH: {exactDecision?.audit_hash || focusedEvent.audit_hash || 'Historical telemetry preceding write-ahead cryptographic ledger'}
                   </div>
+
+                  {/* Inline Cryptographic Proof Inspector */}
+                  {inspectingAudit && (
+                    <div style={{
+                      marginTop: 8,
+                      padding: '10px 12px',
+                      background: 'var(--bg-surface-0)',
+                      border: '1px solid var(--accent-cyan)',
+                      borderRadius: 4,
+                      position: 'relative',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-cyan)' }}>
+                          CRYPTOGRAPHIC PROOF INSPECTOR // {inspectingAudit.audit_id}
+                        </span>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 8, padding: '1px 5px' }}
+                          onClick={() => setInspectingAudit(null)}
+                        >
+                          ✕ CLOSE
+                        </button>
+                      </div>
+
+                      {inspectingAudit.loading ? (
+                        <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', padding: '6px 0' }}>
+                          VERIFYING SHA-256 HASH CHAIN INTEGRITY...
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>INTEGRITY STATUS:</span>
+                            <span className="mono" style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              color: inspectingAudit.verified ? 'var(--state-normal)' : 'var(--state-critical)',
+                            }}>
+                              {inspectingAudit.verified ? '✓ VERIFIED AUTHENTIC (MATCHES WAL LEDGER)' : '⚠ INTEGRITY MISMATCH'}
+                            </span>
+                          </div>
+
+                          <div className="mono" style={{ fontSize: 8.5, color: 'var(--text-muted)' }}>
+                            STORED HASH: <b style={{ color: '#fff' }}>{inspectingAudit.stored_hash || '—'}</b>
+                          </div>
+                          {inspectingAudit.recalculated_hash && (
+                            <div className="mono" style={{ fontSize: 8.5, color: 'var(--text-muted)' }}>
+                              RECALCULATED: <b style={{ color: inspectingAudit.verified ? 'var(--accent-cyan)' : 'var(--state-critical)' }}>{inspectingAudit.recalculated_hash}</b>
+                            </div>
+                          )}
+                          {inspectingAudit.previous_hash && (
+                            <div className="mono" style={{ fontSize: 8.5, color: 'var(--text-muted)' }}>
+                              PREVIOUS LINK: {inspectingAudit.previous_hash}
+                            </div>
+                          )}
+
+                          {inspectingAudit.canonical_payload && (
+                            <div style={{ marginTop: 4 }}>
+                              <span className="mono" style={{ fontSize: 8, color: 'var(--text-dim)' }}>CANONICAL PRE-IMAGE (DETERMINISTIC UTF-8 INPUT):</span>
+                              <pre style={{
+                                margin: '2px 0 0',
+                                padding: '4px 6px',
+                                background: '#050a12',
+                                border: '1px solid var(--border-subtle)',
+                                borderRadius: 3,
+                                fontSize: 8,
+                                color: 'var(--text-secondary)',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-all',
+                                maxHeight: 70,
+                                overflowY: 'auto',
+                              }}>
+                                {inspectingAudit.canonical_payload}
+                              </pre>
+                            </div>
+                          )}
+
+                          {onNavigateToAudit && (
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: 9, marginTop: 4, alignSelf: 'flex-start' }}
+                              onClick={() => {
+                                onNavigateToAudit(inspectingAudit.audit_id, focusedTrader?.trader_id)
+                                setInspectingAudit(null)
+                              }}
+                            >
+                              OPEN COMPLETE CHAIN IN AUDIT VAULT →
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

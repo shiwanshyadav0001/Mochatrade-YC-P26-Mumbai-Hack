@@ -17,7 +17,8 @@ interface ForensicCaseWorkbenchProps {
   onResetBaseline: (traderId: string) => Promise<void>
   onInspectTrader: (trader: Trader) => void
   onInspectEvidence: (decision?: Decision, event?: Event, trader?: Trader) => void
-  onNavigateToAudit?: (subjectId?: string) => void
+  onNavigateToAudit?: (auditId?: string, subjectId?: string) => void
+  onNavigateToEvent?: (eventId: string, traderId: string) => void
 }
 
 export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
@@ -37,6 +38,7 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
   onInspectTrader,
   onInspectEvidence,
   onNavigateToAudit,
+  onNavigateToEvent,
 }) => {
   const [selectedCaseId, setSelectedCaseId] = useState<string>(() => {
     return cases.length > 0 ? cases[0].case_id : ''
@@ -485,8 +487,19 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
                     style={{ fontSize: 10, padding: '6px 12px' }}
                     onClick={() => onInspectEvidence(activeDecision || undefined, activeEvent || undefined, activeTrader || undefined)}
                   >
-                    OPEN 7-STAGE EVIDENCE
+                    OPEN EVIDENCE CHAIN
                   </button>
+
+                  {activeEvent?.event_id && onNavigateToEvent && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: 10, padding: '6px 12px', color: 'var(--accent-cyan)' }}
+                      onClick={() => onNavigateToEvent(activeEvent.event_id, activeCase.trader_id)}
+                      title="Navigate directly to this event in Live Telemetry Monitor"
+                    >
+                      LOCATE IN LIVE TELEMETRY →
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -554,7 +567,7 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
                         <button
                           className="btn btn-secondary"
                           style={{ fontSize: 8, padding: '2px 6px' }}
-                          onClick={() => onNavigateToAudit(activeCase.trader_id)}
+                          onClick={() => onNavigateToAudit(undefined, activeCase.trader_id)}
                         >
                           VIEW VAULT →
                         </button>
@@ -572,7 +585,13 @@ export const ForensicCaseWorkbench: React.FC<ForensicCaseWorkbenchProps> = ({
                         </div>
                       ) : (
                         relatedAudits.map(item => (
-                          <div key={item.audit_id} className="audit-anchor-item">
+                          <div
+                            key={item.audit_id}
+                            className="audit-anchor-item"
+                            style={{ cursor: onNavigateToAudit ? 'pointer' : 'default' }}
+                            onClick={() => onNavigateToAudit?.(item.audit_id, activeCase.trader_id)}
+                            title="Click to inspect this exact record in Cryptographic Audit Vault"
+                          >
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                               <span className="mono" style={{ color: 'var(--accent-amber)', fontSize: 9 }}>
                                 {item.event}

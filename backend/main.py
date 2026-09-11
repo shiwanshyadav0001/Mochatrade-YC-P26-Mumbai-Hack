@@ -405,6 +405,24 @@ def verify_audit_endpoint(
     return engine.verify_audit_chain()
 
 
+@app.get("/api/audit/{audit_id}")
+def get_single_audit_record(
+    audit_id: str,
+    _: dict[str, str] = Depends(get_current_actor),
+) -> dict[str, Any]:
+    """Fetches a specific audit record by ID and cryptographically verifies its individual SHA-256 integrity."""
+    from audit_chain import verify_single_audit_record
+
+    for rec in engine.audit:
+        if rec.get("audit_id") == audit_id:
+            res = verify_single_audit_record(rec)
+            return {
+                "record": rec,
+                **res,
+            }
+    raise HTTPException(404, f"Audit record '{audit_id}' not found")
+
+
 @app.post("/api/actions/evaluate")
 def evaluate_action_endpoint(
     body: ActionEvaluationInput,

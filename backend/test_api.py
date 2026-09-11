@@ -305,6 +305,18 @@ def test_traders_list_metadata(monkeypatch):
     assert "risk_dimensions" in sample
 
 
+def test_single_audit_record_verification_endpoint(monkeypatch):
+    test_engine = engine_module.NetraEngine()
+    monkeypatch.setattr(main, "engine", test_engine)
 
+    assert len(test_engine.audit) > 0
+    target = test_engine.audit[0]
+    audit_id = target["audit_id"]
 
-
+    res = main.get_single_audit_record(audit_id)
+    assert res["valid"] is True
+    assert res["audit_id"] == audit_id
+    assert res["stored_hash"] == target["current_hash"]
+    assert res["recalculated_hash"] == target["current_hash"]
+    assert "canonical_payload" in res
+    assert res["record"]["audit_id"] == audit_id
