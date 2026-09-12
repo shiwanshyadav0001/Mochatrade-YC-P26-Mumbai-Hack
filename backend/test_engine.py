@@ -994,3 +994,183 @@ def test_persisted_decision_provenance_roundtrip():
         assert db_ev is not None
         assert db_ev.audit_id == audit_id
         assert db_ev.audit_hash == db_dec.audit_hash
+
+
+# =====================================================================
+# CONTINUOUS TRADING SAFETY PROTOCOL TESTS
+# =====================================================================
+
+def test_continuous_trading_healthy_action():
+    """Healthy trader can perform a normal trading action without restriction."""
+    engine = NetraEngine()
+    engine.reset()
+    # Trader 7842 starts at 94.0 trust
+    assert engine.traders["7842"]["trust_score"] >= 90.0
+    res = engine.ingest({
+        "trader_id": "7842",
+        "event_type": "TRADE",
+        "amount": 1500,
+        "asset": "BTC",
+        "leverage": 3,
+        "device_id": "DEV-7842-PRIMARY",
+        "ip_address": "203.0.113.22",
+        "country": "IN",
+    })
+    assert res["decision"]["decision"] == "ALLOW"
+    assert res["trust"] >= 90.0
+    # Action evaluation for normal trade should also allow
+    eval_res = engine.evaluate_action("7842", "TRADE", context={"amount": 1500})
+    assert eval_res["decision"] == "ALLOW"
+    assert eval_res["allowed"] is True
+
+
+def test_continuous_trading_normal_does_not_trigger_restriction():
+    """Normal trading sequence does not unnecessarily trigger VERIFY/RESTRICT."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    # First 4 events are normal (LOGIN + 3 normal trades)
+    for ev in events[:4]:
+        res = engine.ingest(ev)
+        assert res["decision"]["decision"] in {"ALLOW", "MONITOR"}
+        assert res["trust"] >= 70.0
+
+
+def test_continuous_trading_anomalous_affects_trust():
+    """Anomalous trading behavior affects the EXISTING trust state via engine.ingest()."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    trusts = []
+    for ev in events:
+        res = engine.ingest(ev)
+        trusts.append(res["trust"])
+    # Trust must degrade from start to end
+    assert trusts[0] >= 90.0
+    assert trusts[-1] < trusts[0]
+    assert trusts[-1] < 45.0
+    # Trust decays monotonically after leverage spike (index 4 onwards)
+    assert trusts[5] < trusts[4]
+    assert trusts[6] < trusts[5]
+
+
+def test_continuous_trading_high_sensitivity_enforcement():
+    """High-sensitivity trading action invokes existing enforcement mechanism."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    for ev in events:
+        engine.ingest(ev)
+    # After degraded trust, WITHDRAWAL should be restricted/blocked
+    eval_res = engine.evaluate_action("7842", "WITHDRAWAL", context={"amount": 15000})
+    assert eval_res["decision"] in {"VERIFY", "RESTRICT", "BLOCK"}
+    assert eval_res["allowed"] is False
+    # Normal read should still be allowed (read-only bypass)
+    read_res = engine.evaluate_action("7842", "PROFILE_VIEW")
+    assert read_res["allowed"] is True
+
+
+def test_continuous_trading_step_up_recovery():
+    """Step-up verification through existing system produces recovery."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    for ev in events:
+        engine.ingest(ev)
+    prior = engine.traders["7842"]["trust_score"]
+    assert prior < 50.0
+    recovery = engine.step_up_verify("7842", "2FA_BIOMETRIC")
+    assert recovery["new_trust"] > recovery["previous_trust"]
+    assert recovery["verified"] is True
+    assert engine.traders["7842"]["trust_score"] == recovery["new_trust"]
+    # After recovery, enforcement should be less restrictive
+    post_eval = engine.evaluate_action("7842", "TRADE", context={"amount": 1500})
+    assert post_eval["decision"] in {"ALLOW", "MONITOR", "VERIFY"}
+
+
+def test_continuous_trading_failed_verification_restriction():
+    """Failed verification or continued anomaly produces restriction/containment."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    for ev in events[:6]:
+        engine.ingest(ev)
+    prior = engine.traders["7842"]["trust_score"]
+    failed = engine.step_up_verify("7842", "PASSKEY", status="FAILED")
+    assert failed["verified"] is False
+    assert failed["new_trust"] < prior
+    assert failed["session_risk_state"] == "SESSION_RESTRICTED"
+    # Second failure should trigger containment
+    failed2 = engine.step_up_verify("7842", "PASSKEY", status="FAILED")
+    # After 2 failures, session may be terminated
+    assert failed2["session_risk_state"] in {"SESSION_RESTRICTED", "SESSION_TERMINATED"}
+
+
+def test_continuous_trading_audit_evidence():
+    """Audit evidence is generated for continuous trading transitions."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    audit_before = len(engine.audit)
+    for ev in events:
+        engine.ingest(ev)
+    assert len(engine.audit) > audit_before
+    assert len(engine.decisions) >= len(events)
+    # Each decision should have audit provenance
+    for dec in engine.decisions[-len(events):]:
+        assert dec.get("audit_id") is not None
+        assert dec.get("audit_hash") is not None
+        assert len(dec["audit_hash"]) == 64
+    # Audit chain must remain valid
+    chain = engine.verify_audit_chain()
+    assert chain["valid"] is True
+
+
+def test_continuous_trading_observatory_consistency():
+    """Observatory state remains consistent after continuous trading scenario."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    for ev in events:
+        engine.ingest(ev)
+    obs = engine.get_observatory()
+    rec = next((r for r in obs if r["trader_id"] == "7842"), None)
+    assert rec is not None
+    assert rec["trust_score"] == engine.traders["7842"]["trust_score"]
+    assert rec["session_risk_state"] == engine.traders["7842"]["session_risk_state"]
+    assert rec["operational_state"] in {"HIGH_ALERT", "RESTRICTED", "PROTOCOL_ACTIVE", "MONITORING", "RECOVERY", "RESOLVED"}
+
+
+def test_continuous_trading_scenario_determinism():
+    """Continuous trading scenario is deterministic and reproducible."""
+    engine_a = NetraEngine()
+    engine_a.reset()
+    _, events_a = engine_a.prepare_scenario("CONTINUOUS_TRADING")
+    trusts_a = [engine_a.ingest(ev)["trust"] for ev in events_a]
+
+    engine_b = NetraEngine()
+    engine_b.reset()
+    _, events_b = engine_b.prepare_scenario("CONTINUOUS_TRADING")
+    trusts_b = [engine_b.ingest(ev)["trust"] for ev in events_b]
+
+    assert trusts_a == trusts_b
+    assert len(trusts_a) == 8
+
+
+def test_continuous_trading_uses_existing_enforcement_and_protocols():
+    """Continuous trading reuses existing P-01..P-04 and OPT mechanisms without duplication."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    for ev in events:
+        engine.ingest(ev)
+    # Check that existing protocols are triggered, not new ones
+    from enforcement import SECURITY_PROTOCOLS, OPT_IN_PROTOCOLS
+    # After degraded trust, at least P-01 or P-02 should be active
+    trader = engine.traders["7842"]
+    active = engine.evaluate_action("7842", "WITHDRAWAL", context={"amount": 15000})
+    assert any(p in SECURITY_PROTOCOLS for p in active["active_protocols"])
+    # No fake trust score field introduced
+    assert "trust_score" in trader
+    assert "continuous_trust_score" not in trader
+    assert "secondary_trust" not in trader

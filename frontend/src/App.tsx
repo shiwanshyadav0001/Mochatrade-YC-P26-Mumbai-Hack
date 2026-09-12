@@ -16,6 +16,7 @@ import { TrustTrajectoryHero } from './components/TrustTrajectoryHero'
 import { ObservatoryWatchlist } from './components/ObservatoryWatchlist'
 import { SecurityProtocolCenter } from './components/SecurityProtocolCenter'
 import { ClientActivityPresentation } from './components/ClientActivityPresentation'
+import { ContinuousTradingSafety } from './components/ContinuousTradingSafety'
 import { StepUpVerificationModal } from './components/StepUpVerificationModal'
 import { AccountRecoveryModal } from './components/AccountRecoveryModal'
 import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, ObservatoryRecord, OptInProtocol, Policy, RecoveryRequestResponse, RiskEventItem, SecurityProtocol, StreamStatus, Trader, UserRole } from './types'
@@ -24,6 +25,7 @@ type View =
   | 'OVERVIEW'
   | 'LIVE MONITOR'
   | 'OBSERVATORY'
+  | 'TRADING SAFETY'
   | 'TRADERS'
   | 'RISK EVENTS'
   | 'RELATIONSHIP GRAPH'
@@ -38,15 +40,16 @@ const navItems: { id: View; code: string; label: string }[] = [
   { id: 'OVERVIEW', code: '01', label: 'Overview' },
   { id: 'LIVE MONITOR', code: '02', label: 'Live Monitor' },
   { id: 'OBSERVATORY', code: '03', label: 'Observatory' },
-  { id: 'TRADERS', code: '04', label: 'Traders' },
-  { id: 'RISK EVENTS', code: '05', label: 'Risk Events' },
-  { id: 'RELATIONSHIP GRAPH', code: '06', label: 'Topology Graph' },
-  { id: 'PROTOCOLS', code: '07', label: 'Protocols' },
-  { id: 'CASES', code: '08', label: 'Cases & Triage' },
-  { id: 'POLICIES', code: '09', label: 'Policy Matrix' },
-  { id: 'SIMULATOR', code: '10', label: 'Scenario Lab' },
-  { id: 'AUDIT', code: '11', label: 'Audit Vault' },
-  { id: 'ANALYTICS', code: '12', label: 'Analytics' },
+  { id: 'TRADING SAFETY', code: '04', label: 'Trading Safety' },
+  { id: 'TRADERS', code: '05', label: 'Traders' },
+  { id: 'RISK EVENTS', code: '06', label: 'Risk Events' },
+  { id: 'RELATIONSHIP GRAPH', code: '07', label: 'Topology Graph' },
+  { id: 'PROTOCOLS', code: '08', label: 'Protocols' },
+  { id: 'CASES', code: '09', label: 'Cases & Triage' },
+  { id: 'POLICIES', code: '10', label: 'Policy Matrix' },
+  { id: 'SIMULATOR', code: '11', label: 'Scenario Lab' },
+  { id: 'AUDIT', code: '12', label: 'Audit Vault' },
+  { id: 'ANALYTICS', code: '13', label: 'Analytics' },
 ]
 
 const riskLabels: Record<string, string> = {
@@ -1630,6 +1633,31 @@ export default function App() {
                 }
                 setView(v)
               }}
+            />
+          )}
+
+          {/* VIEW: TRADING SAFETY */}
+          {view === 'TRADING SAFETY' && (
+            <ContinuousTradingSafety
+              trader={selected}
+              allTraders={traders}
+              decisions={decisions}
+              events={events}
+              selectedId={selectedId}
+              onSelectTrader={id => {
+                setSelectedId(id)
+                refreshSelected(id)
+              }}
+              onNavigate={(v, id) => {
+                if (id) {
+                  setSelectedId(id)
+                  refreshSelected(id)
+                }
+                setView(v as View)
+              }}
+              onRefreshAll={refreshAll}
+              onOpenStepUpModal={handleOpenStepUpModal}
+              onOpenRecoveryModal={handleOpenRecoveryModal}
             />
           )}
 

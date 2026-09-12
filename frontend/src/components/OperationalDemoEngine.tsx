@@ -19,6 +19,7 @@ export type ScenarioCode =
   | 'TAKEOVER'
   | 'ATTACK_SURGE'
   | 'NORMAL_ACTIVITY'
+  | 'CONTINUOUS_TRADING'
 
 interface ScenarioStepDef {
   step: number
@@ -318,6 +319,99 @@ const SCENARIOS: Record<ScenarioCode, ScenarioDef> = {
         baselineComparison: 'Matches habitual asset (BTC) and leverage (3×). Zero behavioral anomaly.',
         expectedOutcome: 'ALLOW // Continuous Normal Standing (~94.0)',
         severity: 'NORMAL',
+      },
+    ],
+  },
+  CONTINUOUS_TRADING: {
+    code: 'CONTINUOUS_TRADING',
+    title: 'Continuous Trading Safety Protocol',
+    targetTraderId: '7842',
+    targetTraderName: 'Maya Chen',
+    severityTag: 'CRITICAL',
+    summary:
+      'Live trading session demonstrating continuous trust evaluation: Normal trades -> Leverage spike -> Volume escalation -> Withdrawal attempt -> Trust degradation -> Enforcement -> Step-up -> Recovery.',
+    thesis:
+      'Authentication establishes identity once. NETRA continuously evaluates trust DURING trading. Every trade, leverage change, and withdrawal is evaluated against real-time behavioral baselines, anomaly signals, and action sensitivity. A previously trusted trader can become higher risk mid-session.',
+    steps: [
+      {
+        step: 1,
+        event_type: 'LOGIN',
+        title: 'Session Initiation',
+        telemetry: 'Mumbai, IN (203.0.113.22) // Primary Hardware DEV-7842-PRIMARY',
+        detail: 'Trader authenticates from known domestic ISP and registered hardware. Trust established at 94.0.',
+        baselineComparison: 'Within habitual hours, approved geography, known device. Zero deviation.',
+        expectedOutcome: 'ALLOW // Baseline Trust Preserved (~94.0)',
+        severity: 'NORMAL',
+      },
+      {
+        step: 2,
+        event_type: 'TRADE',
+        title: 'Normal Trade #1 - BTC 1500 @ 3x',
+        telemetry: 'BTC Spot // 3x Leverage // Known Device',
+        detail: 'First routine trade. Size and leverage within habitual baseline.',
+        baselineComparison: '1500 vs 3000 avg deposit (0.5x). Leverage 3x matches baseline. Velocity normal.',
+        expectedOutcome: 'ALLOW // Continuous Trust Maintained (~93.5)',
+        severity: 'NORMAL',
+      },
+      {
+        step: 3,
+        event_type: 'TRADE',
+        title: 'Normal Trade #2 - ETH 2200 @ 3x',
+        telemetry: 'ETH Spot // 3x Leverage // Known Device',
+        detail: 'Second routine trade. Continued baseline conformance.',
+        baselineComparison: 'Trade size within 1-sigma. Velocity: 2 trades in session. No anomaly.',
+        expectedOutcome: 'ALLOW // Continuous Trust Maintained (~93.0)',
+        severity: 'NORMAL',
+      },
+      {
+        step: 4,
+        event_type: 'TRADE',
+        title: 'Normal Trade #3 - SOL 1800 @ 2x',
+        telemetry: 'SOL Spot // 2x Leverage // Known Device',
+        detail: 'Third routine trade. Conservative leverage reduction.',
+        baselineComparison: 'Conservative leverage. Session velocity still within baseline.',
+        expectedOutcome: 'ALLOW // Continuous Trust Maintained (~93.0)',
+        severity: 'NORMAL',
+      },
+      {
+        step: 5,
+        event_type: 'LEVERAGE_CHANGE',
+        title: 'Leverage Spike - 25x Margin',
+        telemetry: 'BTC Margin // 25x Leverage // 8.3x Baseline Max',
+        detail: 'Trader increases margin to 25x. Leverage anomaly: 8.3x above habitual 3x max.',
+        baselineComparison: 'Leverage z-score extreme. Behavioral deviation signal. Velocity accelerating.',
+        expectedOutcome: 'VERIFY // Trust Decay Initiated (~68.0)',
+        severity: 'ELEVATED',
+      },
+      {
+        step: 6,
+        event_type: 'TRADE',
+        title: 'High-Leverage Trade - BTC 8000 @ 25x',
+        telemetry: 'BTC Leveraged // 25x // 8K Notional',
+        detail: 'Large position at extreme leverage. Combined leverage + volume anomaly.',
+        baselineComparison: 'Trade size 2.7x baseline. Leverage 8.3x baseline. Multi-vector compounding.',
+        expectedOutcome: 'RESTRICT // Trust Degradation (~42.0)',
+        severity: 'HIGH',
+      },
+      {
+        step: 7,
+        event_type: 'TRADE',
+        title: 'Escalating Volume - ETH 12000 @ 30x',
+        telemetry: 'ETH Leveraged // 30x // 12K Notional',
+        detail: 'Further escalation. Velocity burst detected. Multi-dimensional anomaly.',
+        baselineComparison: 'Trade size 4x baseline. Leverage 10x baseline. Velocity 3x baseline. Kill-chain progression.',
+        expectedOutcome: 'BLOCK // Trust Collapse (~22.0)',
+        severity: 'CRITICAL',
+      },
+      {
+        step: 8,
+        event_type: 'WITHDRAWAL',
+        title: 'Withdrawal Attempt - 15000 to Fresh Wallet',
+        telemetry: 'WITHDRAWAL // 15K // WALLET-7842-FRESH-01',
+        detail: 'High-sensitivity withdrawal to new destination. Fresh wallet + degraded trust = maximal restriction.',
+        baselineComparison: 'Fresh wallet anomaly. Trust < 25. Action sensitivity 95. P-02/P-03 triggered.',
+        expectedOutcome: 'BLOCK // Automated Capital Lockdown & Case Escalation (~18.0)',
+        severity: 'CRITICAL',
       },
     ],
   },

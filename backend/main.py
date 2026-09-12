@@ -87,6 +87,7 @@ class ScenarioRequest(BaseModel):
             "ATTACK_SURGE", "SURGE",
             "HIGH_VALUE", "LEGITIMATE_HIGH_VALUE", "WHALE", "LEGITIMATE_HIGH_VALUE_ACTIVITY",
             "FALSE_POSITIVE", "GENUINE_USER", "FALSE_POSITIVE_RESOLVED",
+            "CONTINUOUS_TRADING",
         }
         if val not in valid:
             raise ValueError(f"Unknown scenario: {val}. Supported: {sorted(valid)}")

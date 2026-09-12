@@ -3549,6 +3549,19 @@ class NetraEngine:
                 {"trader_id": "7003", "event_type": "TRADE", "amount": 120000, "asset": "BTC", "leverage": 2, "source": "whale-liquidity"},
             ]
 
+        if scenario == "CONTINUOUS_TRADING":
+            self._isolate_scenario_trader("7842", trust=94.0, baseline_deposit=3000)
+            return "7842", [
+                {"trader_id": "7842", "event_type": "LOGIN", "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "country": "IN", "city": "Mumbai", "source": "continuous-trading"},
+                {"trader_id": "7842", "event_type": "TRADE", "amount": 1500, "asset": "BTC", "leverage": 3, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "source": "continuous-trading"},
+                {"trader_id": "7842", "event_type": "TRADE", "amount": 2200, "asset": "ETH", "leverage": 3, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "source": "continuous-trading"},
+                {"trader_id": "7842", "event_type": "TRADE", "amount": 1800, "asset": "SOL", "leverage": 2, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "source": "continuous-trading"},
+                {"trader_id": "7842", "event_type": "LEVERAGE_CHANGE", "leverage": 25, "asset": "BTC", "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "source": "continuous-trading"},
+                {"trader_id": "7842", "event_type": "TRADE", "amount": 8000, "asset": "BTC", "leverage": 25, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "source": "continuous-trading"},
+                {"trader_id": "7842", "event_type": "TRADE", "amount": 12000, "asset": "ETH", "leverage": 30, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "source": "continuous-trading"},
+                {"trader_id": "7842", "event_type": "WITHDRAWAL", "amount": 15000, "currency": "USD", "wallet_address": "WALLET-7842-FRESH-01", "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "source": "continuous-trading"},
+            ]
+
         raise ValueError(f"Unknown scenario: {scenario}")
 
     def search(self, query: str) -> dict[str, Any]:
