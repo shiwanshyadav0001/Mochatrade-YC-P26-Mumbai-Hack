@@ -475,7 +475,7 @@ button:disabled {
    ========================================================================== */
 
 .workspace {
-  padding: 14px 18px 48px;
+  padding: 16px 20px 48px;
   max-width: 1720px;
   margin: 0 auto;
 }
@@ -511,7 +511,7 @@ button:disabled {
 .grid-12 {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
-  gap: 12px;
+  gap: 14px;
 }
 .col-12 { grid-column: span 12; }
 .col-9  { grid-column: span 9; }
@@ -675,11 +675,12 @@ button:disabled {
 }
 .trust-score-row strong {
   font-family: var(--font-mono);
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
   line-height: 1;
   color: #fff;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
 }
 .trust-score-row span {
   font-family: var(--font-mono);
@@ -974,12 +975,13 @@ button:disabled {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 1px 5px;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
   border-radius: var(--radius-xs);
   text-transform: uppercase;
   display: inline-block;
   white-space: nowrap;
+  line-height: 1.4;
 }
 .status-pill.normal,
 .status-pill.allow,
@@ -1438,12 +1440,13 @@ button:disabled {
   margin: 2px 0 4px;
 }
 .kpi-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: #fff;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
+  letter-spacing: -0.02em;
 }
 .kpi-sub-meta {
   font-size: 10px;
