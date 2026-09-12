@@ -108,13 +108,23 @@ export const setActorRole = async (role: UserRole): Promise<void> => {
 export const getActorRole = (): UserRole => currentRole
 
 async function parseErrorDetail(res: Response): Promise<string> {
+  // Read body once as text to avoid "body stream already read" on double read
+  let text: string
   try {
-    const data = await res.json()
+    text = await res.text()
+  } catch {
+    return `HTTP ${res.status}: ${res.statusText}`
+  }
+  if (!text) return `HTTP ${res.status}: ${res.statusText}`
+  try {
+    const data = JSON.parse(text)
     if (typeof data.detail === 'string') return data.detail
     if (Array.isArray(data.detail)) return data.detail.map((d: any) => d.msg || JSON.stringify(d)).join('; ')
+    // If JSON parsed but no detail, return original text if it looks like plain error
+    if (typeof data === 'string') return data
     return JSON.stringify(data)
   } catch {
-    return (await res.text()) || `HTTP ${res.status}: ${res.statusText}`
+    return text
   }
 }
 
