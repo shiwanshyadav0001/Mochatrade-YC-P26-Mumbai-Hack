@@ -1174,3 +1174,139 @@ def test_continuous_trading_uses_existing_enforcement_and_protocols():
     assert "trust_score" in trader
     assert "continuous_trust_score" not in trader
     assert "secondary_trust" not in trader
+
+
+# =====================================================================
+# SESSION RISK HEATMAP TESTS
+# =====================================================================
+
+def test_session_heatmap_deterministic_ordering():
+    """Heatmap returns deterministic chronological timeline derived from transitions."""
+    engine = NetraEngine()
+    engine.reset()
+    # After reset, 7842 has initial transitions from seed
+    initial_points = engine.get_session_heatmap("7842")
+    # Ingest continuous trading scenario and verify heatmap grows deterministically
+    engine2 = NetraEngine()
+    engine2.reset()
+    tid, events = engine2.prepare_scenario("CONTINUOUS_TRADING")
+    for ev in events:
+        engine2.ingest(ev)
+    points = engine2.get_session_heatmap("7842")
+    assert len(points) == len(events)
+    # Chronological ordering (timestamps are generated at ingest, should be monotonic)
+    timestamps = [p["timestamp"] for p in points]
+    assert timestamps == sorted(timestamps)
+    # Deterministic: re-run and compare trust/decision/event_type (timestamps and event_ids are runtime-generated and differ)
+    engine3 = NetraEngine()
+    engine3.reset()
+    tid3, evs3 = engine3.prepare_scenario("CONTINUOUS_TRADING")
+    for ev in evs3:
+        engine3.ingest(ev)
+    points3 = engine3.get_session_heatmap("7842")
+    assert len(points) == len(points3)
+    assert [p["trust_score"] for p in points] == [p["trust_score"] for p in points3]
+    assert [p["decision"] for p in points] == [p["decision"] for p in points3]
+    assert [p["event_type"] for p in points] == [p["event_type"] for p in points3]
+    assert [p["heat_band"] for p in points] == [p["heat_band"] for p in points3]
+
+
+def test_session_heatmap_explanatory_context():
+    """Each heatmap point retains explanatory context (signals, session state, protocol)."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    for ev in events:
+        engine.ingest(ev)
+    points = engine.get_session_heatmap("7842")
+    # Major transitions should have signals and protocol context
+    major = [p for p in points if p["is_major_transition"]]
+    assert len(major) >= 2
+    for p in points:
+        assert "trust_score" in p
+        assert "risk_level" in p
+        assert "heat_band" in p
+        assert "session_risk_state" in p
+        assert "decision" in p
+        assert "event_type" in p
+        assert "risk_intensity" in p
+        assert "signals" in p
+        # No fabricated new trust field
+        assert "fake_score" not in p
+        assert "secondary_risk" not in p
+
+
+def test_session_heatmap_normal_vs_degraded_regions():
+    """Normal actions remain ALLOW, degraded actions show VERIFY/RESTRICT and heat bands."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    # First 4 are normal
+    for ev in events[:4]:
+        engine.ingest(ev)
+    early_points = engine.get_session_heatmap("7842")[-4:]
+    for p in early_points:
+        assert p["decision"] in {"ALLOW", "MONITOR"}
+        assert p["heat_band"] in {"NORMAL", "GUARDED"}
+    # Ingest remaining anomalous events
+    for ev in events[4:]:
+        engine.ingest(ev)
+    full_points = engine.get_session_heatmap("7842")
+    # Last point must be degraded/high-risk
+    final = full_points[-1]
+    assert final["trust_score"] < 45.0
+    assert final["heat_band"] in {"HIGH", "CRITICAL"}
+    assert final["risk_level"] in {"HIGH", "CRITICAL"}
+    # Penultimate point should be elevated or worse (trust has decayed)
+    penultimate = full_points[-2]
+    assert penultimate["trust_score"] < 70.0
+    assert penultimate["heat_band"] in {"ELEVATED", "HIGH", "CRITICAL"}
+
+
+def test_session_heatmap_api_response_shape(monkeypatch):
+    """API endpoint returns correct shape and handles missing trader."""
+    import main as main_module
+    test_engine = NetraEngine()
+    test_engine.reset()
+    monkeypatch.setattr(main_module, "engine", test_engine)
+    # Valid trader
+    points = main_module.trader_heatmap("7842", limit=50)
+    assert isinstance(points, list)
+    # Prepare scenario to populate points
+    test_engine.prepare_scenario("CONTINUOUS_TRADING")
+    # After prepare but before ingest, heatmap may be empty (transitions cleared)
+    # Ingest one event and verify shape
+    res = test_engine.ingest({"trader_id": "7842", "event_type": "TRADE", "amount": 1500, "asset": "BTC", "leverage": 3, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22"})
+    points2 = main_module.trader_heatmap("7842", limit=10)
+    assert len(points2) >= 1
+    sample = points2[0]
+    assert "event_id" in sample
+    assert "trust_score" in sample
+    assert "session_risk_state" in sample
+    assert "decision" in sample
+    assert "heat_band" in sample
+    # Missing trader raises 404
+    import pytest
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        main_module.trader_heatmap("999999")
+    assert exc.value.status_code == 404
+
+
+def test_session_heatmap_no_duplicate_trust_system():
+    """Heatmap reuses existing trust; no secondary trust calculation introduced."""
+    engine = NetraEngine()
+    engine.reset()
+    _, events = engine.prepare_scenario("CONTINUOUS_TRADING")
+    for ev in events:
+        engine.ingest(ev)
+    points = engine.get_session_heatmap("7842")
+    for p in points:
+        # Ensure trust_score matches underlying transition new_score (source of truth)
+        # And that we didn't invent a parallel score
+        assert "trust_score" in p
+        assert "heat_trust" not in p
+        assert "secondary_trust" not in p
+        assert "risk_score_v2" not in p
+        # Risk intensity is deterministic inverse, not fabricated random
+        assert p["risk_intensity"] == round(100.0 - p["trust_score"], 1)

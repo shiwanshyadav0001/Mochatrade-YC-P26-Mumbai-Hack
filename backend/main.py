@@ -299,6 +299,19 @@ def trader_events(trader_id: str, _: dict[str, str] = Depends(get_current_actor)
     return engine.trader_events(trader_id)
 
 
+@app.get("/api/traders/{trader_id}/heatmap")
+def trader_heatmap(
+    trader_id: str,
+    limit: int = 50,
+    _: dict[str, str] = Depends(get_current_actor),
+) -> list[dict[str, Any]]:
+    """Returns deterministic session-risk heatmap timeline derived from existing trust transitions and decisions."""
+    try:
+        return engine.get_session_heatmap(trader_id, limit=limit)
+    except KeyError:
+        raise HTTPException(404, "Trader not found")
+
+
 @app.get("/api/traders/{trader_id}/graph")
 def trader_graph(trader_id: str, _: dict[str, str] = Depends(get_current_actor)) -> dict[str, Any]:
     if trader_id not in engine.traders:

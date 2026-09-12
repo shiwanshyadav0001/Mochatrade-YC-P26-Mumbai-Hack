@@ -17,6 +17,7 @@ import { ObservatoryWatchlist } from './components/ObservatoryWatchlist'
 import { SecurityProtocolCenter } from './components/SecurityProtocolCenter'
 import { ClientActivityPresentation } from './components/ClientActivityPresentation'
 import { ContinuousTradingSafety } from './components/ContinuousTradingSafety'
+import { SessionRiskHeatmap } from './components/SessionRiskHeatmap'
 import { StepUpVerificationModal } from './components/StepUpVerificationModal'
 import { AccountRecoveryModal } from './components/AccountRecoveryModal'
 import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, ObservatoryRecord, OptInProtocol, Policy, RecoveryRequestResponse, RiskEventItem, SecurityProtocol, StreamStatus, Trader, UserRole } from './types'
@@ -1638,32 +1639,43 @@ export default function App() {
 
           {/* VIEW: TRADING SAFETY */}
           {view === 'TRADING SAFETY' && (
-            <ContinuousTradingSafety
-              trader={selected}
-              allTraders={traders}
-              decisions={decisions}
-              events={events}
-              selectedId={selectedId}
-              onSelectTrader={id => {
-                setSelectedId(id)
-                refreshSelected(id)
-              }}
-              onNavigate={(v, id) => {
-                if (id) {
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <ContinuousTradingSafety
+                trader={selected}
+                allTraders={traders}
+                decisions={decisions}
+                events={events}
+                selectedId={selectedId}
+                onSelectTrader={id => {
                   setSelectedId(id)
                   refreshSelected(id)
-                }
-                setView(v as View)
-              }}
-              onRefreshAll={refreshAll}
-              onOpenStepUpModal={handleOpenStepUpModal}
-              onOpenRecoveryModal={handleOpenRecoveryModal}
-            />
+                }}
+                onNavigate={(v, id) => {
+                  if (id) {
+                    setSelectedId(id)
+                    refreshSelected(id)
+                  }
+                  setView(v as View)
+                }}
+                onRefreshAll={refreshAll}
+                onOpenStepUpModal={handleOpenStepUpModal}
+                onOpenRecoveryModal={handleOpenRecoveryModal}
+              />
+              <SessionRiskHeatmap
+                traderId={selectedId}
+                onNavigateToEvent={(eventId, traderId) => {
+                  setSelectedId(traderId)
+                  refreshSelected(traderId)
+                  setView('LIVE MONITOR')
+                }}
+              />
+            </div>
           )}
 
           {/* VIEW: TRADERS */}
           {view === 'TRADERS' && (
-            <div className="grid-12">
+            <div>
+              <div className="grid-12">
               <div className="col-8">
                 <div className="panel">
                   <div className="panel-header">
@@ -2078,6 +2090,17 @@ export default function App() {
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+              <div style={{ marginTop: 16 }}>
+                <SessionRiskHeatmap
+                  traderId={selectedId}
+                  onNavigateToEvent={(eventId, traderId) => {
+                    setSelectedId(traderId)
+                    refreshSelected(traderId)
+                    setView('LIVE MONITOR')
+                  }}
+                />
               </div>
             </div>
           )}

@@ -3443,6 +3443,103 @@ class NetraEngine:
             filtered = [r for r in filtered if r.get("severity", 0.0) >= min_severity]
         return filtered[-limit:][::-1]
 
+    def get_session_heatmap(self, trader_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        """Returns deterministic session-risk timeline for heatmap visualization.
+
+        Derives exclusively from existing engine state: transitions + decisions + risk_events.
+        Each point retains explanatory context (signals, session state, protocol) without inventing new risk scores.
+        """
+        if trader_id not in self.traders:
+            raise KeyError(trader_id)
+        # Build lookup for decisions by event_id for enrichment
+        decision_by_event: dict[str, dict[str, Any]] = {}
+        for d in self.decisions:
+            if d.get("trader_id") == trader_id and d.get("event_id"):
+                decision_by_event[d["event_id"]] = d
+        # Also lookup risk_events by event_id for signal summary
+        signals_by_event: dict[str, list[dict[str, Any]]] = {}
+        for r in self.risk_events:
+            if r.get("trader_id") == trader_id:
+                signals_by_event.setdefault(r["event_id"], []).append(r)
+
+        raw_transitions = self.transitions.get(trader_id, [])
+        # Deterministic chronological order (insertion order is chronological)
+        ordered = raw_transitions[-limit:] if len(raw_transitions) > limit else raw_transitions
+        points: list[dict[str, Any]] = []
+        for idx, tr in enumerate(ordered):
+            event_id = tr.get("event_id", f"EV-{trader_id}-{idx}")
+            decision = decision_by_event.get(event_id)
+            signals = signals_by_event.get(event_id, [])
+            # Fallback to decision signals if risk_events empty
+            if not signals and decision and decision.get("signals"):
+                signals = [{"category": s.get("category"), "feature": s.get("feature"), "severity": s.get("severity"), "reason": s.get("reason"), "rule_code": s.get("rule_code")} for s in decision.get("signals", [])]
+
+            new_score = float(tr.get("new_score", 94.0))
+            prev_score = float(tr.get("previous_score", new_score))
+            delta = float(tr.get("delta", round(new_score - prev_score, 1)))
+            # Risk intensity 0-100 (inverse trust)
+            risk_intensity = round(100.0 - new_score, 1)
+            # Session state from decision or current trader state at that time (approximate via decision)
+            session_state = (decision.get("session_risk_state") if decision else None) or tr.get("session_risk_state") or self.traders[trader_id].get("session_risk_state", "SESSION_NORMAL")
+            # Decision and action from decision record or transition
+            dec_str = (decision.get("decision") if decision else None) or tr.get("decision", "ALLOW")
+            action_str = (decision.get("action") if decision else None) or tr.get("event_type", "TRADE")
+            contextual_risk = (decision.get("contextual_risk") if decision else None)
+            # Primary signal summary (top 2 most severe)
+            top_signals = sorted(signals, key=lambda x: x.get("severity", 0), reverse=True)[:2]
+            primary_signal = None
+            if top_signals:
+                primary_signal = {
+                    "category": top_signals[0].get("category"),
+                    "feature": top_signals[0].get("feature"),
+                    "severity": top_signals[0].get("severity"),
+                    "reason": top_signals[0].get("reason"),
+                    "rule_code": top_signals[0].get("rule_code"),
+                }
+            # Protocol state at that point (derive from session_state via enforcement logic, or use current trader protocols as snapshot)
+            # For deterministic historical view, we snapshot current active protocols if decision time matches recent window; else empty.
+            # Keep deterministic: use signals' categories to infer protocol relevance, not fabricated history.
+            active_protocols_snapshot: list[str] = []
+            # Deterministic protocol mapping based on decision and signals, reusing existing ActionEnforcementService logic without side effects
+            try:
+                # Reuse current trader state to infer what protocols would have been active for this decision's action
+                tmp_ctx = {"session_risk_state": session_state}
+                inferred = ActionEnforcementService.get_active_protocols(
+                    trader={**self.traders[trader_id], "trust_score": new_score, "session_risk_state": session_state},
+                    action=action_str,
+                    context=tmp_ctx,
+                    anomalies=[{"type": s.get("feature", "")} for s in signals],
+                )
+                active_protocols_snapshot = [p["protocol_id"] for p in inferred]
+            except Exception:
+                active_protocols_snapshot = []
+
+            points.append({
+                "index": idx,
+                "timestamp": tr.get("timestamp"),
+                "event_id": event_id,
+                "event_type": tr.get("event_type"),
+                "trust_score": round(new_score, 1),
+                "previous_score": round(prev_score, 1),
+                "delta": round(delta, 1),
+                "risk_level": risk_level(new_score),
+                "risk_intensity": risk_intensity,
+                "heat_band": risk_level(new_score),
+                "session_risk_state": session_state,
+                "session_id": (decision.get("session_id") if decision else None) or self.traders[trader_id].get("active_session_id") or f"SESS-{trader_id}-PRIMARY",
+                "decision": dec_str,
+                "action": action_str,
+                "contextual_risk": contextual_risk,
+                "is_major_transition": abs(delta) >= 8.0 or dec_str in {"VERIFY", "RESTRICT", "BLOCK"} or risk_level(new_score) in {"HIGH", "CRITICAL"},
+                "primary_signal": primary_signal,
+                "signals": top_signals,
+                "signal_count": len(signals),
+                "evidence": tr.get("evidence", [])[:3],
+                "active_protocols": active_protocols_snapshot,
+                "requires_step_up": session_state in {"SESSION_VERIFICATION_REQUIRED", "SESSION_RESTRICTED", "SESSION_TERMINATED"} or new_score < 45.0,
+            })
+        return points
+
     def system_graph(self) -> dict[str, Any]:
         """System-wide topology graph linking all traders and infrastructure entities."""
         return self.graph_engine.format_system_graph_response(self.graph_links, self.traders)

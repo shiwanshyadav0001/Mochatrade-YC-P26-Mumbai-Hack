@@ -507,3 +507,34 @@ export type RecoveryVerifyResponse = {
   transition?: any
   message: string
 }
+
+export type SessionRiskHeatmapPoint = {
+  index: number
+  timestamp: string
+  event_id: string
+  event_type: string
+  trust_score: number
+  previous_score: number
+  delta: number
+  risk_level: string
+  risk_intensity: number
+  heat_band: string
+  session_risk_state: string
+  session_id: string
+  decision: string
+  action: string
+  contextual_risk?: number
+  is_major_transition: boolean
+  primary_signal?: {
+    category: string
+    feature: string
+    severity: number
+    reason: string
+    rule_code?: string
+  }
+  signals: RiskSignalItem[]
+  signal_count: number
+  evidence: Evidence[]
+  active_protocols: string[]
+  requires_step_up: boolean
+}
