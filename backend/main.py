@@ -15,6 +15,11 @@ from auth import authenticate_user, create_access_token, get_current_actor, requ
 from engine import EVENT_TYPES, NetraEngine
 from anomaly_model import BehavioralAnomalyService
 
+try:
+    from whatsapp import router as whatsapp_router
+except ImportError:
+    whatsapp_router = None  # type: ignore
+
 engine = NetraEngine()
 subscribers: set[asyncio.Queue[str]] = set()
 
@@ -210,6 +215,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# WhatsApp integration (additional interface, not replacement)
+if whatsapp_router is not None:
+    app.include_router(whatsapp_router)
 
 
 @app.get("/api/health")
