@@ -45,8 +45,8 @@ export function ClientActivityPresentation({
         </div>
       </div>
 
-      <div style={{ padding: '14px 16px' }}>
-        <div className="grid-12" style={{ gap: 12 }}>
+      <div style={{ padding: '16px' }}>
+        <div className="grid-12" style={{ gap: 16 }}>
           {/* Left 7 Cols: Demonstration Market Feed / Venue Operations Simulation */}
           <div className="col-7">
             <div
@@ -54,10 +54,10 @@ export function ClientActivityPresentation({
                 position: 'relative',
                 width: '100%',
                 minHeight: 220,
-                background: 'linear-gradient(135deg, #090d16 0%, #0d1527 100%)',
+                background: 'var(--bg-surface-0)',
                 border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-xs)',
-                padding: '12px 14px',
+                borderRadius: 'var(--radius-sm)',
+                padding: '14px 16px',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
@@ -77,13 +77,13 @@ export function ClientActivityPresentation({
                   </span>
                 </div>
 
-                {/* Simulated Ticker Strip */}
+                {/* Simulated Ticker Strip — scannable market telemetry */}
                 <div
                   style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(4, 1fr)',
-                    gap: 6,
-                    marginBottom: 12,
+                    gap: 8,
+                    marginBottom: 14,
                   }}
                 >
                   {[
@@ -95,16 +95,16 @@ export function ClientActivityPresentation({
                     <div
                       key={ticker.symbol}
                       style={{
-                        padding: '4px 6px',
-                        background: 'var(--bg-surface-0)',
+                        padding: '6px 8px',
+                        background: 'var(--bg-surface-1)',
                         border: '1px solid var(--border-subtle)',
-                        borderRadius: 3,
+                        borderRadius: 'var(--radius-xs)',
                         textAlign: 'center',
                       }}
                     >
-                      <div className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)' }}>{ticker.symbol}</div>
-                      <div className="mono" style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>{ticker.price}</div>
-                      <div className="mono" style={{ fontSize: 8, color: ticker.up ? 'var(--state-normal)' : 'var(--state-critical)' }}>
+                      <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.04em' }}>{ticker.symbol}</div>
+                      <div className="mono" style={{ fontSize: 11, fontWeight: 700, color: '#fff', marginTop: 1 }}>{ticker.price}</div>
+                      <div className="mono" style={{ fontSize: 8.5, color: ticker.up ? 'var(--state-normal)' : 'var(--state-critical)', fontWeight: 600 }}>
                         {ticker.chg}
                       </div>
                     </div>
@@ -159,17 +159,17 @@ export function ClientActivityPresentation({
 
           {/* Right 5 Cols: Real-time Ingestion Stream from Protected App */}
           <div className="col-5">
-            <div style={{ minHeight: 220, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-dim)', fontWeight: 600 }}>
-                  REAL-TIME CLIENT EVENT PIPELINE:
+            <div style={{ minHeight: 220, display: 'flex', flexDirection: 'column', background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span className="mono" style={{ fontSize: 9.5, color: 'var(--text-dim)', fontWeight: 600, letterSpacing: '0.05em' }}>
+                  REAL-TIME CLIENT EVENT PIPELINE
                 </span>
-                <span className="mono" style={{ fontSize: 8.5, color: 'var(--text-dim)' }}>
+                <span className="mono" style={{ fontSize: 8.5, color: 'var(--state-normal)', background: 'var(--state-normal-bg)', border: '1px solid var(--state-normal-border)', padding: '1px 5px', borderRadius: 3 }}>
                   SSE SYNCED
                 </span>
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', maxHeight: 155, background: 'var(--bg-surface-0)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)', padding: '6px 8px' }}>
+              <div style={{ flex: 1, overflowY: 'auto', maxHeight: 155, background: 'var(--bg-surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)', padding: '8px' }}>
                 {latestEvents.slice(0, 5).map(evt => (
                   <div
                     key={evt.event_id}

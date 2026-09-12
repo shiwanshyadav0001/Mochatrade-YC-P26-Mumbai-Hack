@@ -756,7 +756,7 @@ button:disabled {
 }
 
 .decision-contributors-block {
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border-subtle);
 }
 .contributors-label {
@@ -771,7 +771,7 @@ button:disabled {
 .contributors-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .contributor-row {
   display: grid;
