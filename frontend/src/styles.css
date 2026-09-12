@@ -213,9 +213,9 @@ button:disabled {
 }
 
 .brand-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   color: #fff;
 }
 
@@ -599,9 +599,9 @@ button:disabled {
   box-shadow: var(--inset-highlight);
 }
 .panel-header h3 {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-primary);
 }
@@ -706,9 +706,10 @@ button:disabled {
 }
 .decision-text {
   font-family: var(--font-mono);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.02em;
+  line-height: 1.2;
 }
 .decision-text.block, .decision-text.restrict { color: var(--state-critical); }
 .decision-text.verify   { color: var(--state-elevated); }
