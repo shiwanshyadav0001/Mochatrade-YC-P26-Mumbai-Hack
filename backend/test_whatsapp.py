@@ -351,3 +351,46 @@ def test_interactive_message_parsing():
     assert text == "1"
     # Also test button title fallback
     assert wa._route_message_text(text) == "1"
+
+
+def test_operator_notify_endpoint():
+    c = TestClient(app)
+    # 1. Security Alert
+    resp = c.post(
+        "/api/whatsapp/notify",
+        json={"trader_id": "7842", "notification_type": "SECURITY_ALERT", "details": "Elevated test risk"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "SENT"
+    assert data["notification_type"] == "SECURITY_ALERT"
+    assert data["trader_id"] == "7842"
+
+    # 2. Protocol activation
+    resp = c.post(
+        "/api/whatsapp/notify",
+        json={"trader_id": "7842", "notification_type": "PROTOCOL_ACTIVATION", "protocol_id": "P-03"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["notification_type"] == "PROTOCOL_ACTIVATION"
+
+    # 3. Recovery instructions
+    resp = c.post(
+        "/api/whatsapp/notify",
+        json={"trader_id": "7842", "notification_type": "RECOVERY", "recovery_code": "849201"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["notification_type"] == "RECOVERY"
+
+
+def test_recovery_verification_via_whatsapp():
+    import whatsapp as wa
+
+    # Valid demo recovery challenge code
+    res_valid = wa._handle_recovery_verification("verify 849201", trader_id="7842")
+    assert "Verification Successful" in res_valid
+    assert "SESSION_MONITORED" in res_valid
+
+    # Invalid code
+    res_invalid = wa._handle_recovery_verification("verify 000000", trader_id="7842")
+    assert "Verification Failed" in res_invalid

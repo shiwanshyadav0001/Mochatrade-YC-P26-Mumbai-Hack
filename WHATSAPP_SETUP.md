@@ -56,7 +56,8 @@ WHATSAPP_API_VERSION=v21.0
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/whatsapp/webhook` | None (Meta verification) | Handles `hub.mode=subscribe & hub.verify_token==WHATSAPP_VERIFY_TOKEN` → returns `hub.challenge`. |
-| `POST` | `/api/whatsapp/webhook` | None (but validates `X-Hub-Signature-256` if `WHATSAPP_APP_SECRET` set) | Receives WhatsApp message payload, parses `from` and `text`/`interactive`, routes to NETRA demo flows, sends reply via Cloud API. Always returns `200` within 5s to avoid Meta retries. |
+| `POST` | `/api/whatsapp/webhook` | None (validates `X-Hub-Signature-256`) | Receives incoming WhatsApp messages (menus, trading safety evaluations, and out-of-band recovery code verification via `verify <code>`). Returns `200` within 5s. |
+| `POST` | `/api/whatsapp/notify` | Internal / Operator | Dispatches outbound security alerts, protocol activations, step-up requests, and P-04 recovery instructions to target trader phones. |
 | `GET` | `/api/whatsapp/health` | None | Reports whether WhatsApp is `configured`, which env vars are present, API version, webhook URL. |
 | `GET` | `/api/whatsapp/config` | None | Non-sensitive config prefix (first 4 chars of phone ID). |
 

@@ -622,11 +622,52 @@ def _route_message_text(text: str) -> str:
         return "withdraw_25k"
     if re.search(r"trade\s*\$?\d+", t) or re.search(r"withdraw\s*\$?\d+", t):
         return "trading_custom"
+    # Secondary recovery / step-up code verification via WhatsApp: e.g. "verify 849201", "recovery 849201", "code 849201"
+    if re.search(r"(?:verify|recovery|code)\s+([a-z0-9]{4,10})", t):
+        return "verify_recovery_code"
     return "unknown"
+
+
+def _handle_recovery_verification(text: str, trader_id: str = DEMO_TRADER_ID) -> str:
+    """Verifies a recovery code against the NETRA engine without allowing arbitrary bypass."""
+    match = re.search(r"(?:verify|recovery|code)\s+([a-z0-9]{4,10})", text.strip().lower())
+    if not match:
+        return "⚠️ *Verification format:* Reply with `verify <your-6-digit-code>` (e.g. `verify 849201`)."
+    code = match.group(1).upper()
+    try:
+        import main as main_module
+        eng = main_module.engine
+        res = eng.verify_recovery(
+            trader_id=trader_id,
+            recovery_code=code,
+            actor="whatsapp-out-of-band",
+        )
+        if res.get("verified"):
+            return (
+                f"✅ *NETRA Verification Successful*\n\n"
+                f"Account #{trader_id} has completed secondary out-of-band recovery verification.\n\n"
+                f"*Trust Score:* {res.get('trust_score', 75.0):.1f} / 100 (Restored with Continuous Monitoring)\n"
+                f"*State:* `SESSION_MONITORED` (P-04 Protocol satisfied)\n"
+                f"*Audit Reference:* Event chained in Merkle vault\n\n"
+                f"Your trading session is now operational under continuous behavioral surveillance."
+            )
+        else:
+            return (
+                f"❌ *NETRA Verification Failed*\n\n"
+                f"Invalid or expired recovery code: `{code}`.\n\n"
+                f"Enforcement status remains active. Security incident has been logged to the audit chain."
+            )
+    except Exception as exc:
+        logger.exception("Error during WhatsApp recovery verification: %s", exc)
+        return "⚠️ System error during verification. Please complete recovery in the web terminal."
 
 
 async def _handle_text_and_respond(to: str, text: str, reply_id: str | None = None) -> None:
     route = _route_message_text(reply_id or text)
+    if route == "verify_recovery_code":
+        resp_text = _handle_recovery_verification(text, DEMO_TRADER_ID)
+        await _send_whatsapp_message(to, _send_text(to, resp_text))
+        return
     # Also try trading custom if route unknown but text looks like trading
     if route == "unknown":
         # Try to handle as trading custom
@@ -705,6 +746,63 @@ async def _handle_text_and_respond(to: str, text: str, reply_id: str | None = No
         await _send_whatsapp_message(to, _send_text(to, "Reply *Hi* for menu."))
 
 
+# --- NETRA Security Protocol Notifications (Outbound Integration) ---
+
+async def send_security_alert(to: str, trader_id: str, details: str = "Unusual trading session telemetry detected") -> dict[str, Any] | None:
+    msg = (
+        f"🚨 *NETRA SECURITY ALERT*\n\n"
+        f"NETRA detected elevated behavioral/session risk on Account #{trader_id}.\n\n"
+        f"*Reason:* {details}\n\n"
+        f"Sensitive actions (such as high-value withdrawals or credential changes) may require out-of-band verification.\n\n"
+        f"_This notification was triggered automatically by the NETRA Continuous Trust Intelligence engine._"
+    )
+    return await _send_whatsapp_message(to, _send_text(to, msg))
+
+
+async def send_protocol_notification(to: str, trader_id: str, protocol_id: str, protocol_name: str, action: str = "RESTRICT") -> dict[str, Any] | None:
+    msg = (
+        f"🛡️ *NETRA PROTOCOL ACTIVATION: {protocol_id}*\n\n"
+        f"Protocol: *{protocol_name}*\n"
+        f"Target Account: #{trader_id}\n"
+        f"Enforcement Action: *{action}*\n\n"
+        f"NETRA has activated protective security containment based on continuous risk evaluation.\n"
+        f"Reply *verify <code>* or visit the portal to complete verification."
+    )
+    return await _send_whatsapp_message(to, _send_text(to, msg))
+
+
+async def send_step_up_request(to: str, trader_id: str, verification_type: str = "BIOMETRIC", action_bound: str = "WITHDRAWAL") -> dict[str, Any] | None:
+    msg = (
+        f"🔐 *NETRA STEP-UP VERIFICATION REQUIRED*\n\n"
+        f"Account #{trader_id} requires *{verification_type}* verification before the pending *{action_bound}* action can proceed.\n\n"
+        f"Please complete verification on your trusted terminal or secondary device.\n"
+        f"_Reply with 'verify <code>' if you have received an out-of-band challenge code._"
+    )
+    return await _send_whatsapp_message(to, _send_text(to, msg))
+
+
+async def send_restriction_notice(to: str, trader_id: str, reason: str = "Trust score breached critical security floor") -> dict[str, Any] | None:
+    msg = (
+        f"⚠️ *NETRA ACCOUNT RESTRICTION NOTICE*\n\n"
+        f"Account #{trader_id} has been placed under protective restriction.\n"
+        f"*Reason:* {reason}\n\n"
+        f"High-frequency trading and fund transfers are paused pending operator review or secondary recovery."
+    )
+    return await _send_whatsapp_message(to, _send_text(to, msg))
+
+
+async def send_recovery_instructions(to: str, trader_id: str, challenge_code: str = "849201") -> dict[str, Any] | None:
+    msg = (
+        f"🔑 *NETRA RECOVERY INSTRUCTIONS (P-04)*\n\n"
+        f"Secondary recovery challenge issued for Account #{trader_id}.\n\n"
+        f"Your one-time recovery verification code is: *{challenge_code}*\n\n"
+        f"To verify via WhatsApp, reply:\n"
+        f"*verify {challenge_code}*\n\n"
+        f"_Note: Successful verification restores supervised access without erasing forensic audit history._"
+    )
+    return await _send_whatsapp_message(to, _send_text(to, msg))
+
+
 @router.get("/webhook")
 async def whatsapp_verify(
     hub_mode: str | None = Query(None, alias="hub.mode"),
@@ -738,19 +836,47 @@ async def whatsapp_incoming(
         payload = json.loads(raw_body.decode() or "{}")
     except Exception:
         payload = {}
-    # Handle verification via POST? Usually GET only, but handle
     # Parse message
     from_number, text = _get_user_text(payload)
     if not from_number or not text:
-        # Still return 200 to avoid retries for non-message events (status, etc.)
         logger.info("WhatsApp webhook: no user message, payload keys: %s", list(payload.keys())[:5])
         return {"status": "ok", "message": "No user message"}
     logger.info("WhatsApp incoming from %s: %s", from_number, text[:80])
-    # Process in background to respond quickly (WhatsApp expects 200 within 5s)
     background_tasks.add_task(_handle_text_and_respond, from_number, text, text)
-    # Actually handle synchronously for demo simplicity? Use background but also ensure quick 200
-    # For reliability, we handle synchronously in background_tasks
     return {"status": "ok"}
+
+
+@router.post("/notify")
+async def send_operator_notification(payload: dict[str, Any]) -> dict[str, Any]:
+    """Allows NETRA security operators to dispatch an out-of-band WhatsApp security notification to a trader."""
+    to = payload.get("to") or payload.get("phone_number") or "919999999999"
+    trader_id = str(payload.get("trader_id", DEMO_TRADER_ID))
+    notif_type = payload.get("notification_type", "SECURITY_ALERT").upper()
+    protocol_id = payload.get("protocol_id", "P-01")
+    protocol_name = payload.get("protocol_name", "Adaptive Friction Protocol")
+    details = payload.get("details", "Suspicious session activity detected in Observatory")
+    code = payload.get("recovery_code", "849201")
+
+    res = None
+    if notif_type == "PROTOCOL_ACTIVATION":
+        res = await send_protocol_notification(to, trader_id, protocol_id, protocol_name)
+    elif notif_type == "STEP_UP":
+        res = await send_step_up_request(to, trader_id, "BIOMETRIC", "SENSITIVE_OPERATION")
+    elif notif_type == "RESTRICTION":
+        res = await send_restriction_notice(to, trader_id, details)
+    elif notif_type == "RECOVERY":
+        res = await send_recovery_instructions(to, trader_id, code)
+    else:
+        res = await send_security_alert(to, trader_id, details)
+
+    return {
+        "status": "SENT",
+        "notification_type": notif_type,
+        "trader_id": trader_id,
+        "recipient": to,
+        "delivered": bool(res),
+        "mode": "REAL" if _is_configured() else "DEMO_SIMULATED",
+    }
 
 
 @router.get("/health")
@@ -772,7 +898,6 @@ async def whatsapp_health():
 
 @router.get("/config")
 async def whatsapp_config_check():
-    # Protected: only show non-sensitive config presence
     cfg = _get_config()
     return {
         "verify_token_set": bool(cfg["verify_token"]),

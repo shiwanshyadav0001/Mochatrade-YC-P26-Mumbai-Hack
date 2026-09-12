@@ -733,6 +733,45 @@ export function ObservatoryWatchlist({
                     RECOVERY (P-04)
                   </button>
                 </div>
+
+                {/* WhatsApp Out-Of-Band Security Channel */}
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{
+                      width: '100%',
+                      fontSize: 9.5,
+                      padding: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: 'rgba(37, 211, 102, 0.08)',
+                      borderColor: 'rgba(37, 211, 102, 0.3)',
+                      color: '#25D366',
+                    }}
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/api/whatsapp/notify', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            trader_id: selectedRecord.trader_id,
+                            notification_type: selectedRecord.pending_recovery ? 'RECOVERY' : 'SECURITY_ALERT',
+                            details: `Observatory behavioral risk trigger (${selectedRecord.operational_state})`,
+                          }),
+                        })
+                        const data = await res.json()
+                        alert(`WhatsApp Security Dispatch: ${data.status} (${data.mode}) to Account #${selectedRecord.trader_id}`)
+                      } catch (err) {
+                        alert('WhatsApp dispatch error. Check API endpoint.')
+                      }
+                    }}
+                  >
+                    <span>💬</span>
+                    <span>DISPATCH WHATSAPP SECURITY ALERT</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-dim)' }}>
