@@ -13,6 +13,7 @@ import { PolicyMatrixSimulator } from './components/PolicyMatrixSimulator'
 import { ReasoningEvidenceChain } from './components/ReasoningEvidenceChain'
 import { ScenarioAttackReplay } from './components/ScenarioAttackReplay'
 import { TrustTrajectoryHero } from './components/TrustTrajectoryHero'
+import { NetraHeroVideo } from './components/NetraHeroVideo'
 import { ObservatoryWatchlist } from './components/ObservatoryWatchlist'
 import { SecurityProtocolCenter } from './components/SecurityProtocolCenter'
 import { ClientActivityPresentation } from './components/ClientActivityPresentation'
@@ -1403,7 +1404,12 @@ export default function App() {
                 onInjectSyntheticEvent={handleInjectSyntheticEvent}
               />
 
-              {/* Primary Intelligence Area: Hero Trajectory + Persistent Decision Gateway */}
+              {/* NETRA HERO VIDEO — PRIMARY VISUAL ARTIFACT (continuous autoplay, muted, loop, no controls) */}
+              <div style={{ marginBottom: 12 }}>
+                <NetraHeroVideo />
+              </div>
+
+              {/* Analytical Trajectory Engine — positioned below hero video */}
               <div className="grid-12">
                 {/* Left 8 Cols: Continuous Trust Trajectory Hero */}
                 <div className="col-8">
