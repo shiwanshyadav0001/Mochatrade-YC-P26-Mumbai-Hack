@@ -1405,13 +1405,13 @@ export default function App() {
 
               {/* Primary Intelligence Area: Video-integrated Analytical Trajectory + Persistent Decision Gateway */}
               <div className="grid-12">
-                {/* Left 8 Cols: Analytical Trajectory Engine with embedded hero video */}
-                <div className="col-8">
+                {/* Left 7 Cols: Analytical Trajectory Engine with embedded hero video — wider hero */}
+                <div className="col-7">
                   <TrustTrajectoryHero trader={selected} />
                 </div>
 
-                {/* Right 4 Cols: Persistent Decision & Action Gateway */}
-                <div className="col-4">
+                {/* Right 5 Cols: Persistent Decision & Action Gateway — more breathing room */}
+                <div className="col-5">
                   <PersistentDecisionPanel
                     decision={latestDecision}
                     trader={selected}

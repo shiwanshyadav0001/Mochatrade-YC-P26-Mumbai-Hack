@@ -139,7 +139,7 @@ export function TrustTrajectoryHero({ trader }: TrustTrajectoryHeroProps) {
       </div>
 
       {/* Hero Demonstration Video — primary visual artifact inside Analytical Trajectory Engine */}
-      <div style={{ background: '#06080c', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)', lineHeight: 0 }}>
+      <div style={{ background: '#06080c', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)', lineHeight: 0, marginBottom: 8 }}>
         <video
           ref={videoRef}
           src="/assets/netra-hero.mp4"
@@ -152,16 +152,17 @@ export function TrustTrajectoryHero({ trader }: TrustTrajectoryHeroProps) {
             display: 'block',
             width: '100%',
             height: 'auto',
-            maxHeight: 460,
+            maxHeight: 520,
             aspectRatio: '16 / 9',
-            objectFit: 'contain',
+            objectFit: 'cover',
+            objectPosition: 'center',
             background: '#06080c',
           }}
         />
       </div>
 
-      {/* SVG Canvas with Shaded Policy Bands */}
-      <div className="hero-chart-svg-wrapper">
+      {/* SVG Canvas with Shaded Policy Bands — below video with clear separation */}
+      <div className="hero-chart-svg-wrapper" style={{ borderTop: '1px solid var(--border-subtle)' }}>
         <svg
           className="hero-chart-svg"
           viewBox={`0 0 ${width} ${height}`}
