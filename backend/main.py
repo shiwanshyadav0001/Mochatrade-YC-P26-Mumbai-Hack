@@ -121,6 +121,12 @@ class ProtocolTriggerInput(BaseModel):
     trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
 
 
+class OptInEnrollInput(BaseModel):
+    trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
+    protocol_id: str = Field(min_length=1, max_length=32)
+    enabled: bool = True
+
+
 class TerminateSessionInput(BaseModel):
     trader_id: str
     reason: str = "Manual security termination"
@@ -552,6 +558,35 @@ async def trigger_protocol_endpoint(
         await broadcast("PROTOCOL_TRIGGERED", res)
         await broadcast("OBSERVATORY_UPDATED", {"trader_id": payload.trader_id, "protocol_id": protocol_id})
         await broadcast("RISK_UPDATED", {"trader_id": payload.trader_id, "session_risk_state": res.get("session_risk_state")})
+        return res
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/protocols/opt-in")
+def get_opt_in_protocols_endpoint(
+    trader_id: str | None = None,
+    _: dict[str, str] = Depends(get_current_actor),
+) -> list[dict[str, Any]]:
+    """Returns available and eligible opt-in security protocols, with trader enrollment status if trader_id provided."""
+    return engine.get_opt_in_protocols(trader_id=trader_id)
+
+
+@app.post("/api/protocols/opt-in/enroll")
+async def enroll_opt_in_protocol_endpoint(
+    payload: OptInEnrollInput,
+    actor: dict[str, str] = Depends(require_role({"ADMIN", "RISK_ANALYST", "INVESTIGATOR", "VIEWER"})),
+) -> dict[str, Any]:
+    """Allows a trader/operator to explicitly opt into or out of stricter voluntary security protocols."""
+    try:
+        res = engine.enroll_opt_in_protocol(
+            trader_id=payload.trader_id,
+            protocol_id=payload.protocol_id,
+            enabled=payload.enabled,
+            actor=actor["actor_id"],
+        )
+        await broadcast("OPT_IN_PROTOCOL_UPDATED", res)
+        await broadcast("OBSERVATORY_UPDATED", {"trader_id": payload.trader_id, "opt_in_protocol": payload.protocol_id})
         return res
     except (KeyError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))

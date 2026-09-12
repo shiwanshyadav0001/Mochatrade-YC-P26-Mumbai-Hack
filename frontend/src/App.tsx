@@ -18,7 +18,7 @@ import { SecurityProtocolCenter } from './components/SecurityProtocolCenter'
 import { ClientActivityPresentation } from './components/ClientActivityPresentation'
 import { StepUpVerificationModal } from './components/StepUpVerificationModal'
 import { AccountRecoveryModal } from './components/AccountRecoveryModal'
-import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, ObservatoryRecord, Policy, RecoveryRequestResponse, RiskEventItem, SecurityProtocol, StreamStatus, Trader, UserRole } from './types'
+import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, ObservatoryRecord, OptInProtocol, Policy, RecoveryRequestResponse, RiskEventItem, SecurityProtocol, StreamStatus, Trader, UserRole } from './types'
 
 type View =
   | 'OVERVIEW'
@@ -117,6 +117,7 @@ export default function App() {
   // Observatory & Security Protocols State
   const [observatory, setObservatory] = useState<ObservatoryRecord[]>([])
   const [protocols, setProtocols] = useState<SecurityProtocol[]>([])
+  const [optInProtocols, setOptInProtocols] = useState<OptInProtocol[]>([])
   const [stepUpModalOpen, setStepUpModalOpen] = useState(false)
   const [stepUpTraderId, setStepUpTraderId] = useState('7842')
   const [recoveryModalOpen, setRecoveryModalOpen] = useState(false)
@@ -203,12 +204,16 @@ export default function App() {
   const refreshSelected = useCallback(async (id?: string) => {
     const targetId = id || selectedIdRef.current
     try {
-      const [trader, nextGraph] = await Promise.all([
+      const [trader, nextGraph, nextOptIns] = await Promise.all([
         api.get<Trader>(`/traders/${targetId}`),
         api.get<Graph>(`/traders/${targetId}/graph`),
+        api.get<OptInProtocol[]>(`/protocols/opt-in?trader_id=${targetId}`).catch(() => []),
       ])
       setSelected(trader)
       setGraph(nextGraph)
+      if (nextOptIns && nextOptIns.length > 0) {
+        setOptInProtocols(nextOptIns)
+      }
     } catch {
       // Ignore
     }
@@ -216,7 +221,7 @@ export default function App() {
 
   const refreshAll = useCallback(async () => {
     try {
-      const [nextTraders, nextAnalytics, nextCases, nextAudit, nextPolicy, nextDecisions, nextEvents, nextRiskEvents, nextSysGraph, nextObs, nextProtos] = await Promise.all([
+      const [nextTraders, nextAnalytics, nextCases, nextAudit, nextPolicy, nextDecisions, nextEvents, nextRiskEvents, nextSysGraph, nextObs, nextProtos, nextOptIns] = await Promise.all([
         api.get<Trader[]>('/traders'),
         api.get<Analytics>('/analytics'),
         api.get<Case[]>('/cases'),
@@ -228,6 +233,7 @@ export default function App() {
         api.get<Graph>('/graph/system'),
         api.get<ObservatoryRecord[]>('/observatory').catch(() => []),
         api.get<SecurityProtocol[]>('/protocols').catch(() => []),
+        api.get<OptInProtocol[]>(`/protocols/opt-in?trader_id=${selectedIdRef.current}`).catch(() => []),
       ])
       setTraders(nextTraders)
       setAnalytics(nextAnalytics)
@@ -240,6 +246,9 @@ export default function App() {
       setSystemGraph(nextSysGraph)
       setObservatory(nextObs)
       setProtocols(nextProtos)
+      if (nextOptIns && nextOptIns.length > 0) {
+        setOptInProtocols(nextOptIns)
+      }
       await refreshSelected(selectedIdRef.current)
     } catch (error: any) {
       const detail = error?.detail || error?.message || 'Connection error'
@@ -659,6 +668,24 @@ export default function App() {
       await refreshAll()
     } catch (err: any) {
       setNotice(err.message || 'Protocol dispatch failed.')
+    }
+  }
+
+  const handleToggleOptInProtocol = async (protocolId: string, enabled: boolean, traderId: string) => {
+    soundManager.playEventTick()
+    try {
+      const res = await api.send<any>('POST', '/protocols/opt-in/enroll', {
+        trader_id: traderId,
+        protocol_id: protocolId,
+        enabled: enabled,
+      })
+      soundManager.playSuccess()
+      setNotice(`NETRA SECURITY PROTOCOL: ${protocolId} ${enabled ? 'ENROLLED' : 'REVOKED'} FOR #${traderId} [AUDIT SEALED]`)
+      await refreshAll()
+    } catch (err: any) {
+      soundManager.playThreatAlert()
+      setNotice(err.message || 'Security protocol enrollment failed.')
+      throw err
     }
   }
 
@@ -1925,6 +1952,47 @@ export default function App() {
                         <div className="mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>
                           {actionEvalResult.reason}
                         </div>
+
+                        {actionEvalResult.opt_in_intercept && (
+                          <div style={{
+                            marginTop: 8,
+                            padding: '6px 8px',
+                            borderRadius: 3,
+                            background: 'rgba(56, 189, 248, 0.1)',
+                            border: '1px solid rgba(56, 189, 248, 0.35)',
+                            color: '#38bdf8',
+                            fontSize: 9.5,
+                            fontFamily: 'var(--font-mono)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 6
+                          }}>
+                            <span>🛡️ VOLUNTARY HARDENING GATE: {actionEvalResult.opt_in_protocol} ACTIVE</span>
+                            <span style={{ fontSize: 8.5, color: '#e2e8f0' }}>Trader Preference</span>
+                          </div>
+                        )}
+
+                        {actionEvalResult.requires_step_up && (
+                          <button
+                            className="btn btn-primary"
+                            style={{
+                              marginTop: 8,
+                              width: '100%',
+                              fontSize: 10,
+                              padding: '5px 8px',
+                              background: 'rgba(56, 189, 248, 0.2)',
+                              borderColor: '#38bdf8',
+                              color: '#fff',
+                            }}
+                            onClick={() => {
+                              setStepUpTraderId(selected?.trader_id || selectedId || '7842')
+                              setStepUpModalOpen(true)
+                            }}
+                          >
+                            TRIGGER IN-LINE BIOMETRIC VERIFICATION →
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2529,7 +2597,9 @@ export default function App() {
           {view === 'PROTOCOLS' && (
             <SecurityProtocolCenter
               protocols={protocols}
+              optInProtocols={optInProtocols}
               onTriggerProtocol={handleTriggerProtocol}
+              onToggleOptInProtocol={handleToggleOptInProtocol}
               onSelectTrader={id => {
                 setSelectedId(id)
                 refreshSelected(id)
@@ -2541,6 +2611,7 @@ export default function App() {
                 }
                 setView(v)
               }}
+              currentTraderId={selectedId}
             />
           )}
 

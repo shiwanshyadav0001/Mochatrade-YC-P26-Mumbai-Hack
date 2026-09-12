@@ -24,7 +24,7 @@ from models import (
 )
 from audit_chain import chain_audit_record, verify_audit_chain, GENESIS_HASH
 from baseline import AdaptiveTraderProfile, BaselineEngine, NumericDistribution
-from enforcement import ActionEnforcementService, EnforcementResult, SECURITY_PROTOCOLS, SESSION_RISK_STATES
+from enforcement import ActionEnforcementService, EnforcementResult, SECURITY_PROTOCOLS, SESSION_RISK_STATES, OPT_IN_PROTOCOLS
 from temporal import SequenceEngine, SequenceMatch, TemporalMetrics, TemporalWindowEngine
 from graph_intelligence import GraphIntelligenceEngine, GraphRiskSignal
 from anomaly_model import (
@@ -769,6 +769,7 @@ class NetraEngine:
             "session_risk_state": "SESSION_NORMAL",
             "active_session_id": f"SESS-{trader_id}-PRIMARY",
             "failed_verifications": 0,
+            "opt_in_protocols": [],
         }
 
     def trader_list(self) -> list[dict[str, Any]]:
@@ -3231,6 +3232,7 @@ class NetraEngine:
                 "risk_dimensions": trader.get("risk_dimensions", {}),
                 "pending_recovery": bool(trader.get("pending_recovery")),
                 "requires_step_up": (session_risk_state in {"SESSION_VERIFICATION_REQUIRED", "SESSION_RESTRICTED"} or trust < 45.0),
+                "opt_in_protocols": trader.get("opt_in_protocols", []),
             }
             items.append(item)
 
@@ -3300,6 +3302,70 @@ class NetraEngine:
             "status": "DISPATCHED",
             "protocol": proto,
             "session_risk_state": trader["session_risk_state"],
+        }
+
+    def get_opt_in_protocols(self, trader_id: str | None = None) -> dict[str, Any]:
+        """Returns metadata for all available opt-in security protocols and enrollment status for a trader."""
+        trader_opt_in = []
+        if trader_id and trader_id in self.traders:
+            trader_opt_in = self.traders[trader_id].get("opt_in_protocols", [])
+
+        protocols_list = []
+        for pid, proto in OPT_IN_PROTOCOLS.items():
+            protocols_list.append({
+                **proto,
+                "enrolled": pid in trader_opt_in,
+                "trader_id": trader_id,
+            })
+        return protocols_list
+
+    def enroll_opt_in_protocol(self, trader_id: str, protocol_id: str, enabled: bool, actor: str = "trader") -> dict[str, Any]:
+        """Enrolls or disenrolls a trader from voluntary security protocols with cryptographic audit logging."""
+        if trader_id not in self.traders:
+            raise KeyError(trader_id)
+        if protocol_id not in OPT_IN_PROTOCOLS:
+            raise ValueError(f"Unknown opt-in protocol: {protocol_id}")
+
+        trader = self.traders[trader_id]
+        if "opt_in_protocols" not in trader:
+            trader["opt_in_protocols"] = []
+
+        current_opt_in: list[str] = trader["opt_in_protocols"]
+        proto_def = OPT_IN_PROTOCOLS[protocol_id]
+
+        if enabled:
+            if protocol_id not in current_opt_in:
+                current_opt_in.append(protocol_id)
+            action_name = "OPT_IN_PROTOCOL_ENROLLED"
+            reason = f"Trader voluntarily enrolled in opt-in protocol {protocol_id} ({proto_def['name']})"
+        else:
+            if protocol_id in current_opt_in:
+                current_opt_in.remove(protocol_id)
+            action_name = "OPT_IN_PROTOCOL_REVOKED"
+            reason = f"Trader voluntarily disabled opt-in protocol {protocol_id} ({proto_def['name']})"
+
+        audit_entry = self._audit(
+            actor,
+            action_name,
+            trader_id,
+            reason,
+            {
+                "protocol_id": protocol_id,
+                "protocol_name": proto_def["name"],
+                "enabled": enabled,
+                "active_enrolled": list(current_opt_in),
+            },
+        )
+
+        return {
+            "status": action_name,
+            "trader_id": trader_id,
+            "protocol_id": protocol_id,
+            "enabled": enabled,
+            "active_opt_in_protocols": list(current_opt_in),
+            "enrolled_protocols": list(current_opt_in),
+            "protocol": proto_def,
+            "audit_id": audit_entry.get("audit_id"),
         }
 
     def _isolate_scenario_trader(self, trader_id: str, trust: float = 94.0, baseline_deposit: float = 3000) -> None:

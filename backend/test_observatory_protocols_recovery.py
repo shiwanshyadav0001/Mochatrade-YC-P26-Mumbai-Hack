@@ -228,3 +228,91 @@ def test_end_to_end_closed_loop_attack_and_recovery():
     # 7. Audit vault integrity remains cryptographically valid
     audit_res = engine.verify_audit_chain()
     assert audit_res["valid"] is True
+
+
+def test_opt_in_protocols_definition_and_enrollment():
+    """Verify OPT-01, OPT-02, OPT-03 exist, can be enrolled and revoked, and create audit records."""
+    engine = engine_module.NetraEngine()
+
+    # Verify initial opt-in catalog
+    catalog = engine.get_opt_in_protocols("7842")
+    assert len(catalog) == 3
+    assert {p["protocol_id"] for p in catalog} == {"OPT-01", "OPT-02", "OPT-03"}
+    for p in catalog:
+        assert p["enrolled"] is False
+
+    # Enroll in OPT-01
+    res = engine.enroll_opt_in_protocol(
+        trader_id="7842",
+        protocol_id="OPT-01",
+        enabled=True,
+        actor="TEST_ACTOR",
+    )
+    assert res["status"] == "OPT_IN_PROTOCOL_ENROLLED"
+    assert "OPT-01" in res["active_opt_in_protocols"]
+
+    # Verify trader state updated
+    assert "OPT-01" in engine.traders["7842"]["opt_in_protocols"]
+
+    # Verify observatory includes opt_in_protocols
+    obs = engine.get_observatory()
+    t7842 = next(o for o in obs if o["trader_id"] == "7842")
+    assert "OPT-01" in t7842["opt_in_protocols"]
+
+    # Revoke OPT-01
+    res_rev = engine.enroll_opt_in_protocol(
+        trader_id="7842",
+        protocol_id="OPT-01",
+        enabled=False,
+        actor="TEST_ACTOR",
+    )
+    assert res_rev["status"] == "OPT_IN_PROTOCOL_REVOKED"
+    assert "OPT-01" not in res_rev["active_opt_in_protocols"]
+    assert "OPT-01" not in engine.traders["7842"]["opt_in_protocols"]
+
+    # Audit chain remains mathematically unbroken
+    assert engine.verify_audit_chain()["valid"] is True
+
+
+def test_opt_in_protocol_enforcement_gate():
+    """Verify that OPT-01 forces biometric step-up for sensitive actions even with high trust score."""
+    engine = engine_module.NetraEngine()
+    engine.traders["7842"]["trust_score"] = 95.0
+    engine.traders["7842"]["opt_in_protocols"] = []
+
+    # Normal high-trust trader (trust 95) with NO opt-in: WITHDRAWAL is allowed without step-up
+    res_normal = engine.evaluate_action("7842", "WITHDRAWAL", context={"amount": 5000})
+    assert res_normal["decision"] == "ALLOW"
+    assert res_normal["requires_step_up"] is False
+
+    # With OPT-01 enrolled: WITHDRAWAL is intercepted with VERIFY decision and requires step-up
+    engine.enroll_opt_in_protocol("7842", "OPT-01", enabled=True)
+    res_opt_in = engine.evaluate_action("7842", "WITHDRAWAL", context={"amount": 5000})
+    assert res_opt_in["decision"] == "VERIFY"
+    assert res_opt_in["requires_step_up"] is True
+    assert res_opt_in["opt_in_intercept"] is True
+    assert res_opt_in["opt_in_protocol"] == "OPT-01"
+
+    # Non-sensitive action (PROFILE_VIEW) with OPT-01 enrolled is NOT intercepted
+    res_profile = engine.evaluate_action("7842", "PROFILE_VIEW")
+    assert res_profile["decision"] == "ALLOW"
+    assert res_profile["requires_step_up"] is False
+
+
+def test_opt_in_protocol_volume_surge_gate():
+    """Verify that OPT-02 intercepts transactions exceeding 3x habitual baseline."""
+    engine = engine_module.NetraEngine()
+    engine.traders["7842"]["trust_score"] = 95.0
+    engine.traders["7842"]["baseline"]["deposit_amount"] = 5000
+    engine.enroll_opt_in_protocol("7842", "OPT-02", enabled=True)
+
+    # Baseline deposit = 5,000. Amount = 10,000 (2x) -> ALLOW
+    res_within = engine.evaluate_action("7842", "DEPOSIT", context={"amount": 10000})
+    assert res_within["decision"] == "ALLOW"
+
+    # Baseline deposit = 5,000. Amount = 20,000 (4x > 3x) -> VERIFY intercepted
+    res_surge = engine.evaluate_action("7842", "DEPOSIT", context={"amount": 20000})
+    assert res_surge["decision"] == "VERIFY"
+    assert res_surge["requires_step_up"] is True
+    assert res_surge["opt_in_intercept"] is True
+    assert res_surge["opt_in_protocol"] == "OPT-02"

@@ -75,6 +75,42 @@ SECURITY_PROTOCOLS = {
     },
 }
 
+OPT_IN_PROTOCOLS = {
+    "OPT-01": {
+        "protocol_id": "OPT-01",
+        "name": "Mandatory Biometric Gate for Sensitive Operations",
+        "category": "TRANSACTION_PROTECTION",
+        "description": "Voluntary trader security lock: requires biometric TouchID/FaceID step-up authorization for all withdrawals, destination wallet registrations, and security credential updates regardless of current trust score.",
+        "trigger_conditions": "Voluntarily enabled by trader. Gated on high-sensitivity actions (WITHDRAWAL, NEW_WALLET, CHANGE_PASSWORD, CHANGE_2FA).",
+        "target_actions": ["WITHDRAWAL", "NEW_WALLET", "CHANGE_PASSWORD", "CHANGE_2FA", "CHANGE_API_KEY"],
+        "protection_tier": "HIGH_ASSURANCE",
+        "status": "AVAILABLE",
+        "default_state": "OFF",
+    },
+    "OPT-02": {
+        "protocol_id": "OPT-02",
+        "name": "Baseline Volume Surge Lock",
+        "category": "SURGE_PROTECTION",
+        "description": "Voluntary anomaly boundary: automatically holds and challenges any trade or withdrawal exceeding 3x habitual baseline volume or 10x margin leverage.",
+        "trigger_conditions": "Voluntarily enabled by trader. Triggered when transaction volume > 3x baseline deposit or leverage > 10x.",
+        "target_actions": ["WITHDRAWAL", "TRADE", "LEVERAGE_CHANGE"],
+        "protection_tier": "FINANCIAL_BOUND",
+        "status": "AVAILABLE",
+        "default_state": "OFF",
+    },
+    "OPT-03": {
+        "protocol_id": "OPT-03",
+        "name": "Novel Device & Datacenter Guard",
+        "category": "INFRASTRUCTURE_GUARD",
+        "description": "Voluntary infrastructure lock: demands biometric step-up whenever an action originates from an unwhitelisted hardware device ID or datacenter/VPN network.",
+        "trigger_conditions": "Voluntarily enabled by trader. Intercepts session operations from unrecognized hardware footprints.",
+        "target_actions": ["LOGIN", "WITHDRAWAL", "NEW_WALLET"],
+        "protection_tier": "DEVICE_BOUND",
+        "status": "AVAILABLE",
+        "default_state": "OFF",
+    },
+}
+
 
 @dataclass
 class EnforcementResult:
@@ -90,6 +126,8 @@ class EnforcementResult:
     requires_step_up: bool = False
     active_protocols: list[str] = field(default_factory=list)
     evidence: list[dict[str, Any]] = field(default_factory=list)
+    opt_in_intercept: bool = False
+    opt_in_protocol: str | None = None
     gateway_notice: str = "NETRA Simulated Action Enforcement Gateway (Integration-Ready. No live broker/exchange connection)."
 
     def to_dict(self) -> dict[str, Any]:
@@ -251,6 +289,48 @@ class ActionEnforcementService:
                 evidence=evidence,
             )
 
+        # 4b. Voluntary Opt-In Security Protocol Interception
+        opt_in_protos = trader.get("opt_in_protocols", [])
+        if "OPT-01" in opt_in_protos and action in cls.HIGH_SENSITIVITY_ACTIONS:
+            return EnforcementResult(
+                trader_id=trader_id,
+                action=action,
+                decision="VERIFY",
+                allowed=False,
+                status="CHALLENGED",
+                reason=f"Action '{action}' requires biometric step-up verification: Trader opted into OPT-01 Mandatory Biometric Gate.",
+                trust_score=trust,
+                policy_version=policy_ver,
+                session_risk_state=session_risk_state,
+                requires_step_up=True,
+                active_protocols=[*proto_ids, "OPT-01"],
+                opt_in_intercept=True,
+                opt_in_protocol="OPT-01",
+                evidence=evidence + [{"id": "OPT-01", "type": "VOLUNTARY_POLICY", "label": "OPT-01 Mandatory Biometric Gate Enrolled"}],
+            )
+
+        if "OPT-02" in opt_in_protos and action in {"WITHDRAWAL", "TRADE", "LEVERAGE_CHANGE", "DEPOSIT"}:
+            baseline = trader.get("baseline", {})
+            amt = float(ctx.get("amount") or 0.0)
+            base_dep = float(baseline.get("deposit_amount", 3000))
+            if amt > base_dep * 3.0:
+                return EnforcementResult(
+                    trader_id=trader_id,
+                    action=action,
+                    decision="VERIFY",
+                    allowed=False,
+                    status="CHALLENGED",
+                    reason=f"Action '{action}' (${amt:,.0f}) exceeds 3x habitual baseline (${base_dep:,.0f}): Trader opted into OPT-02 Baseline Volume Surge Lock.",
+                    trust_score=trust,
+                    policy_version=policy_ver,
+                    session_risk_state=session_risk_state,
+                    requires_step_up=True,
+                    active_protocols=[*proto_ids, "OPT-02"],
+                    opt_in_intercept=True,
+                    opt_in_protocol="OPT-02",
+                    evidence=evidence + [{"id": "OPT-02", "type": "VOLUNTARY_POLICY", "label": "OPT-02 Volume Surge Lock Enrolled"}],
+                )
+
         # 5. Trust in monitor band -> MONITOR (Allowed with active observation)
         if trust < bands.get("allow", 90.0):
             return EnforcementResult(
@@ -315,5 +395,14 @@ class ActionEnforcementService:
         if (trust < 65.0 or sess_state in {"SESSION_VERIFICATION_REQUIRED", "SESSION_SUSPICIOUS"} or any(a.get("type", "").startswith("IDENTITY") or a.get("type", "").startswith("NETWORK") for a in anom_list)) and action_name not in cls.READ_ONLY_ACTIONS:
             if SECURITY_PROTOCOLS["P-01"] not in matched:
                 matched.append(SECURITY_PROTOCOLS["P-01"])
+
+        # Opt-In Voluntary Protocol Triggers
+        opt_in_list = trader.get("opt_in_protocols", [])
+        for opt_id in opt_in_list:
+            if opt_id in OPT_IN_PROTOCOLS:
+                proto_def = OPT_IN_PROTOCOLS[opt_id]
+                if action_name in proto_def.get("target_actions", []) or action_name == "ALLOW":
+                    if proto_def not in matched:
+                        matched.append(proto_def)
 
         return matched

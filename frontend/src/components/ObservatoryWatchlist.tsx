@@ -381,7 +381,7 @@ export function ObservatoryWatchlist({
                           </td>
                           <td>{getOperationalBadge(r.operational_state)}</td>
                           <td>
-                            {r.active_protocols.length > 0 ? (
+                            {(r.active_protocols.length > 0 || (r.opt_in_protocols && r.opt_in_protocols.length > 0)) ? (
                               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                                 {r.active_protocols.map(p => (
                                   <span
@@ -397,6 +397,23 @@ export function ObservatoryWatchlist({
                                     }}
                                   >
                                     {p}
+                                  </span>
+                                ))}
+                                {r.opt_in_protocols && r.opt_in_protocols.map(p => (
+                                  <span
+                                    key={p}
+                                    className="mono"
+                                    title="Voluntary Opt-In Security Hardening Enrolled by Trader"
+                                    style={{
+                                      fontSize: 8.5,
+                                      padding: '2px 5px',
+                                      borderRadius: 3,
+                                      background: 'rgba(56, 189, 248, 0.2)',
+                                      color: '#38bdf8',
+                                      border: '1px solid rgba(56, 189, 248, 0.4)',
+                                    }}
+                                  >
+                                    🛡️ {p}
                                   </span>
                                 ))}
                               </div>
@@ -566,6 +583,37 @@ export function ObservatoryWatchlist({
                     </div>
                   )}
                 </div>
+
+                {/* Voluntary Opt-In Hardening Protocols */}
+                {selectedRecord.opt_in_protocols && selectedRecord.opt_in_protocols.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <span className="mono" style={{ fontSize: 9.5, color: '#38bdf8', display: 'block', marginBottom: 6 }}>
+                      VOLUNTARY SECURITY HARDENING ENROLLED:
+                    </span>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {selectedRecord.opt_in_protocols.map(p => (
+                        <span
+                          key={p}
+                          className="mono"
+                          style={{
+                            fontSize: 9,
+                            padding: '3px 8px',
+                            background: 'rgba(56, 189, 248, 0.15)',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            borderRadius: 'var(--radius-xs)',
+                            color: '#38bdf8',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <span>🛡️ {p}</span>
+                          <span style={{ fontSize: 8, color: '#94a3b8' }}>[ACTIVE GATE]</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Target Entity Activity Register & Continuing Operational Stream */}
                 <div style={{ marginBottom: 12 }}>

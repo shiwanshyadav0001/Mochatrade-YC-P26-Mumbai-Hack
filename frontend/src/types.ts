@@ -204,6 +204,7 @@ export type Trader = {
   pending_recovery?: any
   timeline?: Transition[]
   recent_events?: Event[]
+  opt_in_protocols?: string[]
 }
 
 export type Case = {
@@ -399,6 +400,8 @@ export type ActionEvaluationResult = {
   session_risk_state?: string
   restriction_status?: string
   active_protocols?: string[]
+  opt_in_intercept?: boolean
+  opt_in_protocol?: string
 }
 
 export type ObservatoryOperationalState =
@@ -421,6 +424,7 @@ export type ObservatoryRecord = {
   session_risk_state: string
   operational_state: ObservatoryOperationalState
   active_protocols: string[]
+  opt_in_protocols?: string[]
   protocol_details: SecurityProtocol[]
   active_anomalies: any[]
   failed_verifications: number
@@ -439,6 +443,21 @@ export type ObservatoryRecord = {
   risk_dimensions: Record<string, number>
   pending_recovery: boolean
   requires_step_up: boolean
+}
+
+export type OptInProtocol = {
+  protocol_id: string
+  name: string
+  short_name: string
+  description: string
+  scope: string
+  threat_mitigated: string
+  protection_rule: string
+  enrolled: boolean
+  can_disable: boolean
+  enrolled_at?: string
+  enrolled_by?: string
+  last_updated_at?: string
 }
 
 export type SecurityProtocol = {
