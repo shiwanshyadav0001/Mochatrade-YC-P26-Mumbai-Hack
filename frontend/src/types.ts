@@ -538,3 +538,52 @@ export type SessionRiskHeatmapPoint = {
   active_protocols: string[]
   requires_step_up: boolean
 }
+
+export type ActionSensitivityResult = {
+  simulation: boolean
+  notice: string
+  trader_id: string
+  prior_trust: number
+  current: {
+    trust_score: number
+    trust_delta: number
+    risk_level: string
+    risk_score: number
+    session_state: string
+    decision: string
+    action: string
+    enforcement: ActionEvaluationResult
+    active_protocols: string[]
+    requires_step_up: boolean
+    signals: RiskSignalItem[]
+    event: Event
+  }
+  simulated: {
+    trust_score: number
+    trust_delta: number
+    risk_level: string
+    risk_score: number
+    session_state: string
+    decision: string
+    action: string
+    enforcement: ActionEvaluationResult
+    active_protocols: string[]
+    requires_step_up: boolean
+    signals: RiskSignalItem[]
+    event: Event
+  }
+  delta: {
+    trust_change: number
+    risk_change: number
+    decision_changed: boolean
+    policy_transition: string
+    session_transition: string
+  }
+  explainability: {
+    why: string
+    new_signals: RiskSignalItem[]
+    mitigated_signals: RiskSignalItem[]
+    modifications_applied: Record<string, any>
+  }
+  methodological_note: string
+}

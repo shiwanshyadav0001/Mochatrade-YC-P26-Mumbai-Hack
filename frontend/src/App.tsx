@@ -18,6 +18,7 @@ import { SecurityProtocolCenter } from './components/SecurityProtocolCenter'
 import { ClientActivityPresentation } from './components/ClientActivityPresentation'
 import { ContinuousTradingSafety } from './components/ContinuousTradingSafety'
 import { SessionRiskHeatmap } from './components/SessionRiskHeatmap'
+import { ActionSensitivitySimulator } from './components/ActionSensitivitySimulator'
 import { StepUpVerificationModal } from './components/StepUpVerificationModal'
 import { AccountRecoveryModal } from './components/AccountRecoveryModal'
 import type { ActionEvaluationResult, Analytics, AuditRecord, AuditVerifyResult, Case, Decision, Event, Graph, GraphCluster, ObservatoryRecord, OptInProtocol, Policy, RecoveryRequestResponse, RiskEventItem, SecurityProtocol, StreamStatus, Trader, UserRole } from './types'
@@ -116,7 +117,7 @@ export default function App() {
   const [nodeInfo, setNodeInfo] = useState('')
   const [cmdOpen, setCmdOpen] = useState(false)
   const [demoModalOpen, setDemoModalOpen] = useState(false)
-  const [simulatorMode, setSimulatorMode] = useState<'UNIFIED' | 'LEGACY'>('UNIFIED')
+  const [simulatorMode, setSimulatorMode] = useState<'UNIFIED' | 'LEGACY' | 'SENSITIVITY'>('UNIFIED')
 
   // Observatory & Security Protocols State
   const [observatory, setObservatory] = useState<ObservatoryRecord[]>([])
@@ -2741,6 +2742,13 @@ export default function App() {
                   >
                     ATTACK REPLAY WORKBENCH
                   </button>
+                  <button
+                    className={`btn ${simulatorMode === 'SENSITIVITY' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: 9.5, padding: '3px 10px' }}
+                    onClick={() => setSimulatorMode('SENSITIVITY')}
+                  >
+                    ACTION SENSITIVITY SIMULATOR
+                  </button>
                 </div>
                 <div className="mono" style={{ fontSize: 9.5, color: 'var(--text-secondary)' }}>
                   DETERMINISTIC KERNEL REPLAY // REAL BACKEND INGESTION
@@ -2773,7 +2781,7 @@ export default function App() {
                   onRefreshAll={refreshAll}
                   isModal={false}
                 />
-              ) : (
+              ) : simulatorMode === 'LEGACY' ? (
                 <ScenarioAttackReplay
                   trader={selected}
                   allTraders={traders}
@@ -2796,6 +2804,12 @@ export default function App() {
                   onRefreshAll={refreshAll}
                   onNavigateToAudit={handleNavigateToAudit}
                   onNavigateToEvent={handleNavigateToEvent}
+                />
+              ) : (
+                <ActionSensitivitySimulator
+                  traderId={selectedId}
+                  traders={traders}
+                  events={events}
                 />
               )}
             </div>

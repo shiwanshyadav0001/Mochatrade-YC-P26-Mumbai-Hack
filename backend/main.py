@@ -162,6 +162,12 @@ class CounterfactualSimInput(BaseModel):
     modifications: dict[str, Any] = Field(default_factory=dict)
 
 
+class ActionSensitivityInput(BaseModel):
+    trader_id: str = Field(min_length=1, max_length=64, pattern=r"^\d+$")
+    base_event: dict[str, Any] | None = None
+    modifications: dict[str, Any] = Field(default_factory=dict)
+
+
 async def broadcast(kind: str, data: Any) -> None:
     message = json.dumps({"type": kind, "data": data})
     stale: list[asyncio.Queue[str]] = []
@@ -781,6 +787,25 @@ def simulate_counterfactual_endpoint(
         event_payload=payload.event,
         modifications=payload.modifications,
     )
+
+
+@app.post("/api/simulate/action-sensitivity")
+def simulate_action_sensitivity_endpoint(
+    payload: ActionSensitivityInput,
+    _: dict[str, str] = Depends(get_current_actor),
+) -> dict[str, Any]:
+    """Counterfactual action-sensitivity simulation: what would NETRA decide if this action were different?
+
+    Side-effect free: does not mutate trader trust, sessions, audit, or observatory.
+    """
+    try:
+        return engine.simulate_action_sensitivity(
+            trader_id=payload.trader_id,
+            base_event=payload.base_event,
+            modifications=payload.modifications,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Trader not found")
 
 
 @app.get("/api/search")

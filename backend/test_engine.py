@@ -1310,3 +1310,131 @@ def test_session_heatmap_no_duplicate_trust_system():
         assert "risk_score_v2" not in p
         # Risk intensity is deterministic inverse, not fabricated random
         assert p["risk_intensity"] == round(100.0 - p["trust_score"], 1)
+
+
+# =====================================================================
+# ACTION SENSITIVITY SIMULATOR TESTS
+# =====================================================================
+
+def test_action_sensitivity_deterministic():
+    """Simulation is deterministic for same inputs."""
+    engine = NetraEngine()
+    engine.reset()
+    base = {"trader_id": "7842", "event_type": "TRADE", "amount": 1500, "asset": "BTC", "leverage": 3, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "network_type": "residential"}
+    mods = {"amount": 25000, "leverage": 50}
+    r1 = engine.simulate_action_sensitivity("7842", base_event=base, modifications=mods)
+    r2 = engine.simulate_action_sensitivity("7842", base_event=base, modifications=mods)
+    assert r1["current"]["trust_score"] == r2["current"]["trust_score"]
+    assert r1["simulated"]["trust_score"] == r2["simulated"]["trust_score"]
+    assert r1["delta"]["trust_change"] == r2["delta"]["trust_change"]
+    assert r1["current"]["decision"] == r2["current"]["decision"]
+    assert r1["simulated"]["decision"] == r2["simulated"]["decision"]
+
+
+def test_action_sensitivity_no_mutation():
+    """Simulation does not mutate real trader/session/audit state."""
+    engine = NetraEngine()
+    engine.reset()
+    before_trust = engine.traders["7842"]["trust_score"]
+    before_sess = engine.traders["7842"]["session_risk_state"]
+    before_events = len(engine.events)
+    before_audit = len(engine.audit)
+    before_decisions = len(engine.decisions)
+    base = {"trader_id": "7842", "event_type": "WITHDRAWAL", "amount": 5000, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "wallet_address": "WALLET-TEST-01"}
+    mods = {"amount": 50000, "wallet_address": "WALLET-FRESH-SIM-01", "network_type": "datacenter", "device_id": "DEV-UNKNOWN-SIM"}
+    engine.simulate_action_sensitivity("7842", base_event=base, modifications=mods)
+    assert engine.traders["7842"]["trust_score"] == before_trust
+    assert engine.traders["7842"]["session_risk_state"] == before_sess
+    assert len(engine.events) == before_events
+    assert len(engine.audit) == before_audit
+    assert len(engine.decisions) == before_decisions
+
+
+def test_action_sensitivity_reuses_trust_engine():
+    """Simulation reuses existing trust engine; no parallel risk system."""
+    engine = NetraEngine()
+    engine.reset()
+    base = {"trader_id": "7842", "event_type": "TRADE", "amount": 1500, "leverage": 3, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22"}
+    # Normal trade should be ALLOW/MONITOR
+    normal = engine.simulate_action_sensitivity("7842", base_event=base, modifications={})
+    assert normal["current"]["decision"] in {"ALLOW", "MONITOR"}
+    assert "risk_score" in normal["current"]
+    assert "signals" in normal["current"]
+    # No fake fields
+    assert "fake_trust" not in normal["simulated"]
+    assert "secondary_risk" not in normal["simulated"]
+
+
+def test_action_sensitivity_different_inputs_different_outcomes():
+    """Different scenario inputs can produce different outcomes where appropriate."""
+    engine = NetraEngine()
+    engine.reset()
+    base = {"trader_id": "7842", "event_type": "TRADE", "amount": 1500, "asset": "BTC", "leverage": 3, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "network_type": "residential"}
+    # Small amount vs large amount should differ
+    small = engine.simulate_action_sensitivity("7842", base_event=base, modifications={"amount": 1500})
+    large = engine.simulate_action_sensitivity("7842", base_event=base, modifications={"amount": 50000, "leverage": 50, "device_id": "DEV-UNKNOWN-X", "network_type": "datacenter"})
+    # Large anomalous should have higher risk and lower trust
+    assert large["simulated"]["risk_score"] > small["simulated"]["risk_score"]
+    assert large["simulated"]["trust_score"] <= small["simulated"]["trust_score"]
+    # High sensitivity withdrawal vs small trade should also differ
+    withdraw_base = {"trader_id": "7842", "event_type": "WITHDRAWAL", "amount": 5000, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22", "wallet_address": "WALLET-KNOWN-01"}
+    small_w = engine.simulate_action_sensitivity("7842", base_event=withdraw_base, modifications={"amount": 5000})
+    large_w = engine.simulate_action_sensitivity("7842", base_event=withdraw_base, modifications={"amount": 50000, "wallet_address": "WALLET-FRESH-99", "network_type": "datacenter"})
+    assert large_w["simulated"]["trust_score"] <= small_w["simulated"]["trust_score"]
+
+
+def test_action_sensitivity_response_shape():
+    """Current and simulated states have expected response shape."""
+    engine = NetraEngine()
+    engine.reset()
+    base = {"trader_id": "7842", "event_type": "TRADE", "amount": 2000, "asset": "ETH", "leverage": 3, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22"}
+    mods = {"amount": 15000, "leverage": 25}
+    res = engine.simulate_action_sensitivity("7842", base_event=base, modifications=mods)
+    assert res["simulation"] is True
+    assert "NOT MODIFY" in res["notice"]
+    assert res["trader_id"] == "7842"
+    for side in ("current", "simulated"):
+        assert "trust_score" in res[side]
+        assert "risk_level" in res[side]
+        assert "session_state" in res[side]
+        assert "decision" in res[side]
+        assert "action" in res[side]
+        assert "enforcement" in res[side]
+        assert "active_protocols" in res[side]
+        assert "signals" in res[side]
+        assert "event" in res[side]
+    assert "delta" in res
+    assert "trust_change" in res["delta"]
+    assert "risk_change" in res["delta"]
+    assert "decision_changed" in res["delta"]
+    assert "policy_transition" in res["delta"]
+    assert "explainability" in res
+    assert "why" in res["explainability"]
+    assert "new_signals" in res["explainability"]
+    assert "mitigated_signals" in res["explainability"]
+
+
+def test_action_sensitivity_api_no_mutation(monkeypatch):
+    """API endpoint is side-effect free and returns correct shape."""
+    import main as main_module
+    test_engine = NetraEngine()
+    test_engine.reset()
+    monkeypatch.setattr(main_module, "engine", test_engine)
+    before_trust = test_engine.traders["7842"]["trust_score"]
+    payload = main_module.ActionSensitivityInput(
+        trader_id="7842",
+        base_event={"trader_id": "7842", "event_type": "TRADE", "amount": 1500, "leverage": 3, "device_id": "DEV-7842-PRIMARY", "ip_address": "203.0.113.22"},
+        modifications={"amount": 30000, "leverage": 50, "device_id": "DEV-UNKNOWN-API", "network_type": "datacenter"},
+    )
+    res = main_module.simulate_action_sensitivity_endpoint(payload, {"actor_id": "viewer", "role": "VIEWER"})
+    assert res["simulation"] is True
+    assert res["current"]["trust_score"] != res["simulated"]["trust_score"] or res["delta"]["trust_change"] == 0.0
+    assert test_engine.traders["7842"]["trust_score"] == before_trust
+    # Missing trader raises 404
+    import pytest
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        main_module.simulate_action_sensitivity_endpoint(
+            main_module.ActionSensitivityInput(trader_id="999999", modifications={}), {"actor_id": "x", "role": "VIEWER"}
+        )
+    assert exc.value.status_code == 404

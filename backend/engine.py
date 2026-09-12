@@ -2771,13 +2771,220 @@ class NetraEngine:
                 "signals": [s.to_dict() for s in cf_signals],
             },
             "trust_shift": round(cf_trust - orig_trust, 1),
-            "policy_transition": f"{orig_decision} → {cf_decision}",
+            "policy_transition": f"{orig_decision} -> {cf_decision}",
             "mitigated_signals": mitigated,
             "modifications_applied": mods,
             "simulation": True,
             "notice": "SIMULATION ONLY - DOES NOT MODIFY PRODUCTION STATE",
             "simulation_type": "DETERMINISTIC_SENSITIVITY_SIMULATION",
             "methodological_note": "Sensitivity simulation evaluated deterministically through NetraEngine risk aggregation and policy thresholds without mutating live system state. Not a causal DAG inference.",
+        }
+
+    def simulate_action_sensitivity(
+        self,
+        trader_id: str,
+        base_event: dict[str, Any] | None = None,
+        modifications: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Counterfactual action-sensitivity simulation: 'What would NETRA decide if this action were different?'
+
+        Side-effect free: does not mutate trader trust, sessions, audit, observatory, or persistence.
+        Reuses existing NetraEngine risk aggregation, baseline, anomaly, temporal, and enforcement paths.
+        """
+        if trader_id not in self.traders:
+            raise KeyError(trader_id)
+        trader = self.traders[trader_id]
+        mods = modifications or {}
+
+        # Resolve base event: use last trader event if not provided, else provided dict
+        if base_event is None:
+            t_events = self.trader_events(trader_id)
+            if t_events:
+                base_event = dict(t_events[0])
+            else:
+                base_event = {
+                    "trader_id": trader_id,
+                    "event_type": "TRADE",
+                    "amount": float(trader.get("baseline", {}).get("deposit_amount", 1500)),
+                    "asset": "BTC",
+                    "leverage": int(trader.get("baseline", {}).get("leverage", 3)),
+                    "device_id": trader.get("baseline", {}).get("known_devices", ["DEV-7842-PRIMARY"])[0] if trader.get("baseline", {}).get("known_devices") else "DEV-7842-PRIMARY",
+                    "ip_address": "203.0.113.22",
+                    "country": "IN",
+                }
+        # Normalize base event with trader_id guarantee
+        base_event = {**base_event, "trader_id": trader_id}
+        # Determine prior trust for delta calculation (use transition previous_score if available)
+        prior = float(trader.get("trust_score", 94.0))
+        target_eid = base_event.get("event_id")
+        if target_eid:
+            for t in reversed(self.transitions.get(trader_id, [])):
+                if t.get("event_id") == target_eid:
+                    prior = float(t.get("previous_score", prior))
+                    break
+
+        # Helper to evaluate an event payload through existing engine paths without mutation
+        def _evaluate(payload: dict[str, Any]) -> dict[str, Any]:
+            evt_type = str(payload.get("event_type", "TRADE")).upper()
+            if evt_type not in EVENT_TYPES:
+                evt_type = "TRADE"
+            ev = EventRecord(
+                event_id=payload.get("event_id") or f"EV-SIM-{uuid4().hex[:6].upper()}",
+                timestamp=payload.get("timestamp") or iso_now(),
+                trader_id=trader_id,
+                event_type=evt_type,
+                source=payload.get("source", "simulation"),
+                session_id=payload.get("session_id") or trader.get("active_session_id"),
+                device_id=payload.get("device_id"),
+                ip_address=payload.get("ip_address"),
+                country=payload.get("country"),
+                city=payload.get("city"),
+                asn=payload.get("asn"),
+                network_type=payload.get("network_type"),
+                amount=payload.get("amount"),
+                currency=payload.get("currency", "USD"),
+                asset=payload.get("asset"),
+                leverage=payload.get("leverage"),
+                wallet_address=payload.get("wallet_address"),
+                risk_relevance=payload.get("risk_relevance", "medium"),
+            )
+            signals, anomalies = self._extract_signals(trader, ev)
+            seq = self._sequence(trader_id, ev)
+            if seq:
+                signals.append(
+                    RiskSignal(
+                        category="sequence",
+                        feature="kill_chain_pattern",
+                        severity=float(seq["score"]),
+                        contribution=0.0,
+                        reason=f"{seq['name']} pattern detected",
+                        evidence={"id": seq["id"], "type": "SEQUENCE", "label": seq["name"]},
+                        rule_code="RAPID_SUSPICIOUS_WITHDRAWAL_SEQUENCE",
+                    )
+                )
+            # Apply modification-driven signal filtering (e.g., remove_velocity)
+            # Note: amount/leverage/device overrides already reflected via _extract_signals on modified payload
+            risk, dims, _ = self._aggregate_contextual_risk(signals)
+            action = self._action_for_event(ev)
+            delta = self._calculate_trust_delta(prior, risk, action, evt_type, initial_trust=float(trader.get("initial_trust", 94.0)))
+            trust = round(clamp(prior + delta), 1)
+            decision = self._decision(trust, action)
+            # Enforcement & protocol (reuse existing service, no mutation)
+            enforcement = ActionEnforcementService.evaluate_action(
+                trader={**trader, "trust_score": trust},
+                action=action,
+                policy=self.policy,
+                context={"amount": payload.get("amount"), "session_risk_state": trader.get("session_risk_state", "SESSION_NORMAL")},
+                active_cases=list(self.cases.values()),
+            ).to_dict()
+            # Determine session state that would result (reuse ingest session-state logic deterministically)
+            # Simplified: map decision to session state
+            sess_map = {"ALLOW": "SESSION_NORMAL", "MONITOR": "SESSION_MONITORED", "VERIFY": "SESSION_VERIFICATION_REQUIRED", "RESTRICT": "SESSION_RESTRICTED", "BLOCK": "SESSION_TERMINATED"}
+            sess_state = sess_map.get(decision, "SESSION_MONITORED")
+            return {
+                "event": ev.public(),
+                "signals": [s.to_dict() for s in signals],
+                "anomalies": [a.to_dict() for a in anomalies],
+                "risk_score": round(risk, 1),
+                "risk_dimensions": dims,
+                "trust_score": trust,
+                "trust_delta": round(delta, 1),
+                "risk_level": risk_level(trust),
+                "decision": decision,
+                "action": action,
+                "session_state": sess_state,
+                "enforcement": enforcement,
+                "active_protocols": enforcement.get("active_protocols", []),
+                "requires_step_up": enforcement.get("requires_step_up", False),
+                "sequence": seq,
+            }
+
+        # Evaluate CURRENT (base event as-is)
+        current = _evaluate(base_event)
+        # Build simulated payload by applying modifications to base_event
+        simulated_payload = dict(base_event)
+        # Only allow modification of existing architecture parameters
+        allowed_mods = {"amount", "leverage", "device_id", "ip_address", "network_type", "wallet_address", "event_type", "asset", "country", "city", "asn"}
+        for k, v in mods.items():
+            if k in allowed_mods:
+                simulated_payload[k] = v
+        # Handle explicit nullability: if mods sets device_id to None, keep as None
+        simulated = _evaluate(simulated_payload)
+
+        # Delta & explainability
+        trust_change = round(simulated["trust_score"] - current["trust_score"], 1)
+        risk_change = round(simulated["risk_score"] - current["risk_score"], 1)
+        decision_changed = current["decision"] != simulated["decision"]
+        # Explain why simulated differs: compare signals
+        current_rules = {s.get("rule_code") for s in current["signals"]}
+        simulated_rules = {s.get("rule_code") for s in simulated["signals"]}
+        new_signals = [s for s in simulated["signals"] if s.get("rule_code") not in current_rules]
+        mitigated_signals = [s for s in current["signals"] if s.get("rule_code") not in simulated_rules]
+        # Human-readable why
+        why_parts: list[str] = []
+        if mods.get("amount") is not None and mods.get("amount") != base_event.get("amount"):
+            why_parts.append(f"Amount changed {base_event.get('amount')} -> {mods.get('amount')} impacts money/behaviour signals")
+        if mods.get("leverage") is not None and mods.get("leverage") != base_event.get("leverage"):
+            why_parts.append(f"Leverage {base_event.get('leverage')} -> {mods.get('leverage')} changes behavioural deviation")
+        if mods.get("device_id") is not None and mods.get("device_id") != base_event.get("device_id"):
+            why_parts.append(f"Device {base_event.get('device_id')} -> {mods.get('device_id')} affects device novelty")
+        if mods.get("network_type") is not None and mods.get("network_type") != base_event.get("network_type"):
+            why_parts.append(f"Network {base_event.get('network_type')} -> {mods.get('network_type')} alters network signal")
+        if mods.get("wallet_address") is not None and mods.get("wallet_address") != base_event.get("wallet_address"):
+            why_parts.append(f"Wallet {base_event.get('wallet_address')} -> {mods.get('wallet_address')} changes wallet novelty")
+        if not why_parts and trust_change != 0:
+            why_parts.append(f"Combined signal severity shift: risk {current['risk_score']} -> {simulated['risk_score']}")
+        if not why_parts:
+            why_parts.append("No material parameter change; simulated outcome remains within baseline tolerance")
+        explanation = "; ".join(why_parts)
+
+        return {
+            "simulation": True,
+            "notice": "SIMULATION ONLY - DOES NOT MODIFY PRODUCTION STATE",
+            "trader_id": trader_id,
+            "prior_trust": round(prior, 1),
+            "current": {
+                "trust_score": current["trust_score"],
+                "trust_delta": current["trust_delta"],
+                "risk_level": current["risk_level"],
+                "risk_score": current["risk_score"],
+                "session_state": current["session_state"],
+                "decision": current["decision"],
+                "action": current["action"],
+                "enforcement": current["enforcement"],
+                "active_protocols": current["active_protocols"],
+                "requires_step_up": current["requires_step_up"],
+                "signals": current["signals"][:5],
+                "event": current["event"],
+            },
+            "simulated": {
+                "trust_score": simulated["trust_score"],
+                "trust_delta": simulated["trust_delta"],
+                "risk_level": simulated["risk_level"],
+                "risk_score": simulated["risk_score"],
+                "session_state": simulated["session_state"],
+                "decision": simulated["decision"],
+                "action": simulated["action"],
+                "enforcement": simulated["enforcement"],
+                "active_protocols": simulated["active_protocols"],
+                "requires_step_up": simulated["requires_step_up"],
+                "signals": simulated["signals"][:5],
+                "event": simulated["event"],
+            },
+            "delta": {
+                "trust_change": trust_change,
+                "risk_change": risk_change,
+                "decision_changed": decision_changed,
+                "policy_transition": f"{current['decision']} -> {simulated['decision']}",
+                "session_transition": f"{current['session_state']} -> {simulated['session_state']}",
+            },
+            "explainability": {
+                "why": explanation,
+                "new_signals": new_signals[:3],
+                "mitigated_signals": mitigated_signals[:3],
+                "modifications_applied": {k: v for k, v in mods.items() if k in allowed_mods},
+            },
+            "methodological_note": "Deterministic sensitivity simulation through NetraEngine risk aggregation and enforcement thresholds; no mutation of live trader/session/audit/observatory state.",
         }
 
     def _link_entities(self, event: EventRecord) -> None:
