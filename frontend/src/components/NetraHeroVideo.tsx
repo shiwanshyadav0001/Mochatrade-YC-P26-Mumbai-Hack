@@ -54,7 +54,7 @@ export function NetraHeroVideo() {
     <div className="panel" style={{ overflow: 'hidden' }}>
       <div className="panel-header">
         <h3>NETRA LIVE DEMONSTRATION</h3>
-        <span className="panel-meta">CONTINUOUS AUTOPLAY • MUTED • LOOP • /media/netra-demo.mp4</span>
+        <span className="panel-meta">CONTINUOUS AUTOPLAY • MUTED • LOOP • /assets/netra-hero.mp4</span>
       </div>
       <div
         style={{
@@ -66,7 +66,7 @@ export function NetraHeroVideo() {
       >
         <video
           ref={videoRef}
-          src="/media/netra-demo.mp4"
+          src="/assets/netra-hero.mp4"
           autoPlay
           muted
           loop

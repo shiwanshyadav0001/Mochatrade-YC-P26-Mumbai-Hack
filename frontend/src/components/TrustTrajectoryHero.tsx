@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { Trader, Transition } from '../types'
 
 interface TrustTrajectoryHeroProps {
@@ -14,6 +14,34 @@ const money = (val?: number) =>
     : '—'
 
 export function TrustTrajectoryHero({ trader }: TrustTrajectoryHeroProps) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.muted = true
+    video.playsInline = true
+    const attemptPlay = () => {
+      const p = video.play()
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    }
+    attemptPlay()
+    const onCanPlay = () => attemptPlay()
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible' && video.paused) attemptPlay() }
+    const onInteraction = () => { if (video.paused) attemptPlay() }
+    video.addEventListener('canplay', onCanPlay)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('click', onInteraction, { once: true })
+    window.addEventListener('touchstart', onInteraction, { once: true })
+    window.addEventListener('keydown', onInteraction, { once: true })
+    return () => {
+      video.removeEventListener('canplay', onCanPlay)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('click', onInteraction)
+      window.removeEventListener('touchstart', onInteraction)
+      window.removeEventListener('keydown', onInteraction)
+    }
+  }, [])
+
   const [hoveredPoint, setHoveredPoint] = useState<{
     index: number
     label: string
@@ -108,6 +136,28 @@ export function TrustTrajectoryHero({ trader }: TrustTrajectoryHeroProps) {
             {netDelta < 0 ? `▼ ${netDelta} PTS` : netDelta > 0 ? `▲ +${netDelta} PTS` : 'Δ 0 PTS'}
           </span>
         </div>
+      </div>
+
+      {/* Hero Demonstration Video — primary visual artifact inside Analytical Trajectory Engine */}
+      <div style={{ background: '#06080c', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)', lineHeight: 0 }}>
+        <video
+          ref={videoRef}
+          src="/assets/netra-hero.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          style={{
+            display: 'block',
+            width: '100%',
+            height: 'auto',
+            maxHeight: 460,
+            aspectRatio: '16 / 9',
+            objectFit: 'contain',
+            background: '#06080c',
+          }}
+        />
       </div>
 
       {/* SVG Canvas with Shaded Policy Bands */}

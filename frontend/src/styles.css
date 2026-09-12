@@ -318,11 +318,11 @@ button:disabled {
 }
 .status-dot.active {
   background: var(--state-normal);
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.35);
 }
 .status-dot.connecting {
   background: var(--state-elevated);
-  box-shadow: 0 0 6px rgba(217, 119, 6, 0.6);
+  box-shadow: 0 0 4px rgba(217, 119, 6, 0.35);
   animation: sse-pulse 1.2s infinite ease-in-out;
 }
 .status-dot.offline {
@@ -522,6 +522,15 @@ button:disabled {
 .col-4  { grid-column: span 4; }
 .col-3  { grid-column: span 3; }
 
+@media (max-width: 1100px) {
+  .grid-12 {
+    grid-template-columns: 1fr;
+  }
+  .col-12, .col-9, .col-8, .col-7, .col-6, .col-5, .col-4, .col-3 {
+    grid-column: span 12;
+  }
+}
+
 /* Institutional Pipeline Strip (01 EVENT → 02 CONTEXT → 03 SIGNALS → 04 BASELINE → 05 TOPOLOGY → 06 TRUST IMPACT → 07 POLICY → 08 ACTION → 09 AUDIT) */
 .pipeline-strip {
   background: var(--bg-surface-1);
@@ -656,11 +665,12 @@ button:disabled {
 }
 
 .decision-core-block {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   background: linear-gradient(180deg, var(--bg-surface-1) 0%, var(--bg-surface-0) 100%);
 }
 
