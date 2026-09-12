@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "description": "NETRA // Continuous Trust Intelligence",
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
     "dev": "npm run dev --prefix frontend",
     "build": "npm run build --prefix frontend",
